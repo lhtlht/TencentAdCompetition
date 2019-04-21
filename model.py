@@ -12,16 +12,16 @@ from scipy.sparse import csr_matrix
 lgb_params = {
     'boosting_type': 'gbdt',
     'objective': 'regression',
-    'n_estimators': 10000,
+    'n_estimators': 5000,
     'metric': 'mae',
     'learning_rate': 0.01,
     'min_child_samples': 5,
     'min_child_weight': 0.01,
     'subsample_freq': 1,
-    'num_leaves': 63,
-    'max_depth': 7,
-    'subsample': 0.8,
-    'colsample_bytree': 0.8,
+    'num_leaves': 31,
+    'max_depth': 5,
+    'subsample': 0.6,
+    'colsample_bytree': 0.6,
     'reg_alpha': 0,
     'reg_lambda': 5,
     'verbose': -1,
@@ -83,8 +83,9 @@ def reg_model(model_train, test, train_label, model_type, onehot_features, label
         train_x = sparse.hstack((train_x_onehot, train_x_original)).tocsr()
         test_x = sparse.hstack((test_x_onehot, test_x_original)).tocsr()
     else:
-        train_x = combine[features][:model_train.shape[0]].values
-        test_x = combine[features][model_train.shape[0]:].values
+        tmp = combine[features].astype(np.float32)
+        train_x = csr_matrix(tmp[:model_train.shape[0]].values)
+        test_x = csr_matrix(tmp[model_train.shape[0]:].values)
 
 
     train_y = train_label

@@ -18,7 +18,7 @@ def load_data(is_offline):
     train[['shoptype', 'size']] = train[
         ['shoptype', 'size']].astype(np.int8)
 
-    model_train = train[train['requestDate']>='2019-03-13']
+    model_train = train[train['requestDate']>='2019-03-18']
     model_test = train[train['requestDate']=='2019-03-19']
     if is_offline:
         train_label = model_train['showNum']
@@ -27,6 +27,7 @@ def load_data(is_offline):
         model_test = model_test.drop(columns=['showNum'])
         return model_train, model_test, train_label, test_label
     else:
+        train = train[train['requestDate'] >= '2019-03-18']
         train_label = train['showNum']
         test_label = 1
         train = train.drop(columns=['showNum'])
@@ -52,7 +53,7 @@ def eval_model(y, y_hat, bid):
     return accuracy
 
 if __name__ == "__main__":
-    is_offline = True
+    is_offline = False
     train, test, train_label, test_label = load_data(is_offline)
     """
     train:'requestDate', 'origid', 'bid'
@@ -75,7 +76,16 @@ if __name__ == "__main__":
     print(train.shape)
     preds = reg_model(train, test, train_label, model_type, onehot_features, label_features, features)
 
-    accuracy = eval_model(train_label, preds, 1)
-    print("accuracy:",accuracy)
+
+
+    if is_offline:
+        accuracy = eval_model(test_label, preds, 1)
+        print("accuracy:", accuracy)
+        #0.53
+    else:
+        df = pd.DataFrame()
+        df['id'] = test['id']
+        df['y'] = [round(i,4) for i in preds]
+        df.to_csv("./data/submissionA/0421.csv", index=False, header=None)
 
 

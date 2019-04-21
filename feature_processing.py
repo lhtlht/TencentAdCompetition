@@ -1,4 +1,5 @@
 import time
+import datetime
 import sys
 import pandas as pd
 import numpy as np
@@ -35,6 +36,7 @@ def ad_static_feature_processing():
     ad_static_feature['createTimeMonth'] = ad_static_feature.apply(lambda x: x['createTime'].split(' ')[0].split('-')[1], axis=1)
     ad_static_feature['createTimeDay'] = ad_static_feature.apply(lambda x: x['createTime'].split(' ')[0].split('-')[2],axis=1)
     ad_static_feature['createTimeHour'] = ad_static_feature.apply(lambda x: x['createTime'].split(' ')[1].split(':')[0],axis=1)
+    ad_static_feature['createTimeWeek'] = ad_static_feature.apply(lambda x: datetime.datetime.strptime(x['createTimeDate'], '%Y-%m-%d').weekday(),axis=1)
     ad_static_feature.to_csv(ad_static_feature_path2, index=False, encoding="utf-8")
     return ad_static_feature
 
@@ -44,7 +46,7 @@ def ad_operation_processing():
     origid：38843
     operationType:
         1    648903  修改  基本上都有时间
-        2    111963  新建  大部分为0
+        2    111963  新建  大部分为0,并且设置出价 2
     modifyTag：
         1    500802  广告状态
         2    167298  出价
