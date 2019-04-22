@@ -8,6 +8,7 @@ from model import *
 def load_data(is_offline):
     train_dtypes = {'origid':'uint32', 'bid':'int16'}
     train = pd.read_csv(totalExposureLog_path2, encoding="utf-8", dtype=train_dtypes) #02/16-03/19
+    train = train[train['requestDate'] >= '2019-02-20']
     test = pd.read_csv(test_sample_path2, encoding="utf-8")
     #数据拼接处理
     train = data_join(train)
@@ -18,7 +19,7 @@ def load_data(is_offline):
     train[['shoptype', 'size']] = train[
         ['shoptype', 'size']].astype(np.int8)
 
-    model_train = train[train['requestDate']>='2019-03-18']
+    model_train = train
     model_test = train[train['requestDate']=='2019-03-19']
     if is_offline:
         train_label = model_train['showNum']
@@ -27,19 +28,18 @@ def load_data(is_offline):
         model_test = model_test.drop(columns=['showNum'])
         return model_train, model_test, train_label, test_label
     else:
-        train = train[train['requestDate'] >= '2019-03-18']
+        train = train[train['requestDate'] >= '2019-03-10']
         train_label = train['showNum']
         test_label = 1
         train = train.drop(columns=['showNum'])
         return train, test, train_label, test_label
 
 def data_join(train):
-    #ad_operation = pd.read_csv(ad_operation_path2, encoding="utf-8")
-    ad_static_feature_dtypes = {'accountid': 'uint32', 'bid': 'uint32', 'origid':'uint32',
-                                'createTimeYear':'int8', 'createTimeMonth':'int8', 'createTimeDay':'int8', 'createTimeHour':'int8'}
-    ad_static_feature = pd.read_csv(ad_static_feature_path2, encoding="utf-8", dtype=ad_static_feature_dtypes)
-    train = train.merge(ad_static_feature, how="left", on=["origid"]) #putTime usergroup
-    #train = train.merge(ad_operation, how="left", on=["origid"])
+    ad_operation = pd.read_csv(ad_operation_path2, encoding="utf-8")
+    ad_static_feature = pd.read_csv(ad_static_feature_path2, encoding="utf-8")
+    train = train.merge(ad_static_feature, how="left", on=["origid"]) #putTime usergroup 50个为空
+    train.dropna(subset=['createTimeDate'],inplace=True)
+    train = train.merge(ad_operation, how="left", on=["origid","bid"])
 
     return train
 
@@ -55,23 +55,21 @@ def eval_model(y, y_hat, bid):
 if __name__ == "__main__":
     is_offline = False
     train, test, train_label, test_label = load_data(is_offline)
-    """
-    train:'requestDate', 'origid', 'bid'
-    test:'id', 'origid', 'createTime', 'size', 'industryid', 'shoptype',
-       'shopid', 'accountid', 'putTime', 'usergroup', 'bid', 'createTimeDate',
-       'createTimeYear', 'createTimeMonth', 'createTimeDay', 'createTimeHour'
-    """
+    train = model_feature_processing(train)
     print(train.info())
     print(train.columns)
     print(train.shape)
     print(test.columns)
+
     #特征处理
 
     #模型训练
     model_type = 'lgb'
     label_features = []
-    onehot_features = ['accountid', 'shoptype', 'createTimeHour']
-    features = ['bid', 'size'] + onehot_features
+    onehot_features = ['accountid', 'shoptype']
+    features = ['createTimeDay', 'createTimeWeek', 'createTimeYear', 'createTimeMonth', 'createTimeHour',
+                'requestDateWeek',
+                'bid', 'size'] + onehot_features
     onehot_features = []
     print(train.shape)
     preds = reg_model(train, test, train_label, model_type, onehot_features, label_features, features)
@@ -85,7 +83,13 @@ if __name__ == "__main__":
     else:
         df = pd.DataFrame()
         df['id'] = test['id']
-        df['y'] = [round(i,4) for i in preds]
-        df.to_csv("./data/submissionA/0421.csv", index=False, header=None)
+        pp = []
+        for i in preds:
+            if i<0:
+                pp.append(0)
+            else:
+                pp.append(round(i,4))
+        df['y'] = pp
+        df.to_csv("./data/submissionA/0422.csv", index=False, header=None)
 
 

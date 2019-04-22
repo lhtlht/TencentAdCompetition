@@ -58,9 +58,27 @@ def ad_operation_processing():
     ad_operation = pd.read_csv(PATH + "ad_operation.dat", encoding="utf-8", sep="\t", names=ad_operation_columns,header=None)
 
     ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: str(x['createModifyTime'])[0:8] if x['createModifyTime'] != 0 else 0, axis=1)
+    ad_operation_bid = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 2)].rename(columns={'modifyDesc': 'bid'})
+    ad_operation_usergroup = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 3)].rename(columns={'modifyDesc': 'usergroup'})
+    ad_operation_puttime = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 4)].rename(columns={'modifyDesc': 'putTime'})
 
-    ad_operation.to_csv(ad_operation_path2, index=False, encoding="utf-8")
-    return ad_operation
+    ad_operation_bid2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 2)].rename(columns={'modifyDesc': 'bid'})
+    ad_operation_usergroup2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 3)].rename(columns={'modifyDesc': 'usergroup'})
+    ad_operation_puttime2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 4)].rename(columns={'modifyDesc': 'putTime'})
+
+    ad_operation_re = ad_operation_bid
+    ad_operation_re = ad_operation_re.merge(ad_operation_usergroup[['origid', 'usergroup']], how="left", on="origid")
+    ad_operation_re = ad_operation_re.merge(ad_operation_puttime[['origid', 'putTime']], how="left", on="origid")
+
+    ad_operation_re = ad_operation_re.append(ad_operation_bid2)
+    ad_operation_re = ad_operation_re.append(ad_operation_usergroup2)
+    ad_operation_re = ad_operation_re.append(ad_operation_puttime2)
+
+    ad_operation_re.sort_values(by=['origid', 'createModifyTime'], axis=0, inplace=True)
+    ad_operation_re.fillna(method='bfill', inplace=True)
+
+    ad_operation_re.to_csv(ad_operation_path2, index=False, encoding="utf-8")
+    return ad_operation_re
 
 def  totalExposureLog_processing():
     totalExposureLog_columns = ["requestid", "requestTime", "positionid", "userid", "origid", "size", "bid", "pctr","quality_ecpm", "totalEcpm"]
@@ -99,6 +117,12 @@ def  totalExposureLog_processing():
     totalExposureLogDataProcess = totalExposureLogData.groupby(['requestDate', 'origid', 'bid']).sum().reset_index()
     totalExposureLogDataProcess.to_csv(totalExposureLog_path2, index=False, encoding="utf-8")
 
+def preDate(date):
+    if date >= '2019-03-20':
+        return (datetime.datetime.strptime(date, '%Y-%m-%d') + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+    else:
+        return '2019-03-21'
+
 def test_sample_processing():
     test_sample_columns = ["id", "origid", "createTime", "size", "industryid", "shoptype", "shopid", "accountid","putTime", "usergroup", "bid"]
     test_sample = pd.read_csv(test_sample_path, encoding="utf-8", sep="\t", names=test_sample_columns, header=None)
@@ -108,11 +132,30 @@ def test_sample_processing():
     test_sample['createTimeMonth'] = test_sample.apply(lambda x: x['createTime'].split(' ')[0].split('-')[1], axis=1)
     test_sample['createTimeDay'] = test_sample.apply(lambda x: x['createTime'].split(' ')[0].split('-')[2], axis=1)
     test_sample['createTimeHour'] = test_sample.apply(lambda x: x['createTime'].split(' ')[1].split(':')[0], axis=1)
+    test_sample['createTimeWeek'] = test_sample.apply(lambda x: datetime.datetime.strptime(x['createTimeDate'], '%Y-%m-%d').weekday(), axis=1)
+
+    test_sample['requestDate'] = test_sample.apply(lambda x: preDate(x['createTimeDate']), axis=1)
+    test_sample['requestDateWeek'] = test_sample.apply(lambda x: datetime.datetime.strptime(x['requestDate'], '%Y-%m-%d').weekday(), axis=1)
     test_sample.to_csv(test_sample_path2, index=False, encoding="utf-8")
     return test_sample
 
+def model_feature_processing(train):
+    train['requestDateWeek'] = train.apply(lambda x: datetime.datetime.strptime(x['requestDate'], '%Y-%m-%d').weekday(), axis=1)
+    return train
+
+def train_sta(train):
+    pass
+
 if __name__ == "__main__":
-    ad_static_feature_processing()
+    #第一步处理
+    #ad_static_feature_processing()
     #ad_operation_processing()
     #totalExposureLog_processing()
     #test_sample_processing()
+
+    #第二步处理
+    #展现的均值回溯
+    train_dtypes = {'origid': 'uint32', 'bid': 'int16'}
+    train = pd.read_csv(totalExposureLog_path2, encoding="utf-8", dtype=train_dtypes)  # 02/16-03/19
+    test = pd.read_csv(test_sample_path2, encoding="utf-8")
+    train_sta(train, test)
