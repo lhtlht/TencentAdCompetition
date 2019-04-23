@@ -14,6 +14,7 @@ ad_operation_path = PATH + "ad_operation.dat"
 ad_operation_path2 = PATH2 + "ad_operation.csv"
 totalExposureLog_path = PATH + "totalExposureLog.out"
 totalExposureLog_path2 = PATH3 + "train.csv"
+totalExposureLog_path3 = PATH3 + "train_processing.csv"
 test_sample_path = PATH + 'test_sample.dat'
 test_sample_path2 = PATH3 + 'test.csv'
 
@@ -97,8 +98,6 @@ def  totalExposureLog_processing():
         try:
             print(f'chunk num : {chunk_num} is processing......')
             totalExposureLogChunk = totalExposureLog.get_chunk(20000000)
-            #totalExposureLogChunk['requestTime'] = totalExposureLogChunk.apply(lambda x: time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x['requestTime'])), axis=1)
-            #totalExposureLogChunk['requestDate'] = totalExposureLogChunk.apply(lambda x: x['requestTime'].split(' ')[0], axis=1)
             totalExposureLogChunk['requestDate'] = totalExposureLogChunk.apply(
                 lambda x: str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x['requestTime']))).split(' ')[0], axis=1)
             df = totalExposureLogChunk[['requestDate', 'origid', 'bid']].groupby(['requestDate', 'origid', 'bid'])\
@@ -116,10 +115,33 @@ def  totalExposureLog_processing():
     print(totalExposureLogData.info())
     totalExposureLogDataProcess = totalExposureLogData.groupby(['requestDate', 'origid', 'bid']).sum().reset_index()
     totalExposureLogDataProcess.to_csv(totalExposureLog_path2, index=False, encoding="utf-8")
-
-def preDate(date):
+def  totalExposureLog_processing2():
+    totalExposureLog_columns = ["requestid", "requestTime", "positionid", "userid", "origid", "size", "bid", "pctr","quality_ecpm", "totalEcpm"]
+    totalExposureLog_dtypes = {"requestid": "uint32", "requestTime": "uint32", "positionid": "int32","userid": "uint32", "origid": "int32",
+                               "size": "int16", "bid": "int16", "pctr": "float32", "quality_ecpm": "float32",
+                               "totalEcpm": "float32"}
+    totalExposureLog = pd.read_csv(totalExposureLog_path, encoding="utf-8", sep="\t",
+                                   names=totalExposureLog_columns, header=None,
+                                   dtype=totalExposureLog_dtypes)
+    totalExposureLog = totalExposureLog[["requestid","requestTime","positionid","origid","bid"]]
+    #3.4G
+    print(totalExposureLog.info())
+    #删除重复曝光
+    totalExposureLog.drop_duplicates(subset=['requestid','positionid','origid'],keep='first',inplace=True)
+    print("删除重复曝光",totalExposureLog.info())
+    totalExposureLog['requestDate'] = totalExposureLog.apply(lambda x: str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x['requestTime']))).split(' ')[0], axis=1)
+    totalExposureLog = totalExposureLog[['requestDate', 'origid', 'bid']].groupby(['requestDate', 'origid', 'bid']) \
+        .size() \
+        .reset_index() \
+        .rename(columns={0: 'showNum'})
+    print("统计广告曝光次数",totalExposureLog.shape)
+    #去除一天bid变化的数据
+    totalExposureLog.drop_duplicates(subset=['requestDate', 'origid'],keep=False,inplace=True)
+    print("去除一天bid变化的数据",totalExposureLog.shape)
+    totalExposureLog.to_csv(totalExposureLog_path3, index=False, encoding="utf-8")
+def preDate(date, pre):
     if date >= '2019-03-20':
-        return (datetime.datetime.strptime(date, '%Y-%m-%d') + datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        return (datetime.datetime.strptime(date, '%Y-%m-%d') + datetime.timedelta(days=pre)).strftime("%Y-%m-%d")
     else:
         return '2019-03-21'
 
@@ -134,17 +156,87 @@ def test_sample_processing():
     test_sample['createTimeHour'] = test_sample.apply(lambda x: x['createTime'].split(' ')[1].split(':')[0], axis=1)
     test_sample['createTimeWeek'] = test_sample.apply(lambda x: datetime.datetime.strptime(x['createTimeDate'], '%Y-%m-%d').weekday(), axis=1)
 
-    test_sample['requestDate'] = test_sample.apply(lambda x: preDate(x['createTimeDate']), axis=1)
+    test_sample['requestDate'] = test_sample.apply(lambda x: preDate(x['createTimeDate'],1), axis=1)
     test_sample['requestDateWeek'] = test_sample.apply(lambda x: datetime.datetime.strptime(x['requestDate'], '%Y-%m-%d').weekday(), axis=1)
     test_sample.to_csv(test_sample_path2, index=False, encoding="utf-8")
     return test_sample
 
-def model_feature_processing(train):
+def model_feature_processing(train, test, train_label):
     train['requestDateWeek'] = train.apply(lambda x: datetime.datetime.strptime(x['requestDate'], '%Y-%m-%d').weekday(), axis=1)
-    return train
+    #做曝光量的统计
+    train, test, train_label = train_sta(train, test, train_label)
+    return train, test, train_label
 
-def train_sta(train):
-    pass
+def mean_rule(x, show_bid_mean):
+    bid = x['bid']
+    origidBidMean = x['origidBidMean']
+    maxbid = x['maxbid']
+    maxshow = x['maxshow']
+    minbid = x['minbid']
+    minshow = x['minshow']
+    meanshow = x['meanshow']
+    if origidBidMean >= 0.1:
+        return origidBidMean
+    elif maxbid >= 0.1:
+        if maxshow <= minshow:
+            return round(minshow / (minbid+0.1) * bid, 4)
+        else:
+            slope = (maxshow - minshow) / (maxbid - minbid)
+            bb = bid - minbid
+            return round(minbid + bb * slope, 4)
+    else:
+        return round(show_bid_mean * bid, 4)
+
+def rule_model(train, test):
+
+    origid_bid = train[['origid','bid','showNum']].groupby(['origid','bid']).mean().reset_index().rename(columns={'showNum':'origidBidMean'})
+    origidMax = train[['origid','bid']].groupby(['origid']).max().reset_index()
+    origidMin = train[['origid','bid']].groupby(['origid']).min().reset_index()
+
+    origidMax = origidMax.merge(train[['origid','bid','showNum']], how='left', on=['origid','bid'])
+    origidMin = origidMin.merge(train[['origid','bid','showNum']], how='left', on=['origid','bid'])
+    origidMax = origidMax.groupby(['origid','bid']).mean().reset_index().rename(columns={'bid':'maxbid', 'showNum':'maxshow'})
+    origidMin = origidMin.groupby(['origid','bid']).mean().reset_index().rename(columns={'bid':'minbid', 'showNum':'minshow'})
+    origidMean = train[['origid','showNum']].groupby(['origid']).mean().reset_index().rename(columns={'showNum':'meanshow'})
+    show_mean = train['showNum'].mean()
+    bid_mean = train['bid'].mean()
+    show_bid_mean = show_mean/bid_mean
+
+    sub = test
+    sub = sub.merge(origid_bid, how="left", on=['origid','bid'])
+
+
+    sub = sub.merge(origidMax, how="left", on=['origid'])
+    sub = sub.merge(origidMin, how="left", on=['origid'])
+    sub = sub.merge(origidMean, how="left", on=['origid'])
+    sub.fillna(0,inplace=True)
+    sub['showPNum'] = sub.apply(lambda x: mean_rule(x, show_bid_mean), axis=1)
+
+
+    return sub
+
+def train_sta(train, test, train_label):
+    """
+    'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum'
+    """
+    date_list = train.groupby('requestDate').size().index.tolist()
+    train_rebuilt = pd.DataFrame()
+    train['showNum'] = train_label
+    for date in date_list[1:]:
+        print("sta show ",date)
+        train_date_pre = (datetime.datetime.strptime(date, '%Y-%m-%d') - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        #df_train = train[(train['requestDate']<date) and  (train['requestDate']>=train_date_pre)]
+        df_train = train[train['requestDate'] < date]
+        df_test = train[train['requestDate']==date]
+
+        df = rule_model(df_train, df_test)
+        train_rebuilt = train_rebuilt.append(df)
+    train_label = train_rebuilt['showNum']
+    train_rebuilt = train_rebuilt.drop(columns=['showNum'])
+    test_rebuilt = rule_model(train, test)
+    return train_rebuilt, test_rebuilt, train_label
+
+
 
 if __name__ == "__main__":
     #第一步处理
@@ -153,9 +245,9 @@ if __name__ == "__main__":
     #totalExposureLog_processing()
     #test_sample_processing()
 
+    #额外的曝光日志处理
+    totalExposureLog_processing2()
+
     #第二步处理
     #展现的均值回溯
-    train_dtypes = {'origid': 'uint32', 'bid': 'int16'}
-    train = pd.read_csv(totalExposureLog_path2, encoding="utf-8", dtype=train_dtypes)  # 02/16-03/19
-    test = pd.read_csv(test_sample_path2, encoding="utf-8")
-    train_sta(train, test)
+

@@ -7,8 +7,9 @@ from model import *
 
 def load_data(is_offline):
     train_dtypes = {'origid':'uint32', 'bid':'int16'}
-    train = pd.read_csv(totalExposureLog_path2, encoding="utf-8", dtype=train_dtypes) #02/16-03/19
-    train = train[train['requestDate'] >= '2019-02-20']
+    train = pd.read_csv(totalExposureLog_path3, encoding="utf-8", dtype=train_dtypes) #02/16-03/19
+    train = train[train['showNum']>0]
+    #train = train[train['requestDate'] >= '2019-02-20']
     test = pd.read_csv(test_sample_path2, encoding="utf-8")
     #数据拼接处理
     train = data_join(train)
@@ -28,7 +29,7 @@ def load_data(is_offline):
         model_test = model_test.drop(columns=['showNum'])
         return model_train, model_test, train_label, test_label
     else:
-        train = train[train['requestDate'] >= '2019-03-10']
+        #train = train[train['requestDate'] >= '2019-03-10']
         train_label = train['showNum']
         test_label = 1
         train = train.drop(columns=['showNum'])
@@ -48,28 +49,34 @@ def eval_model(y, y_hat, bid):
     eval_df['y'] = y
     eval_df['y_hat'] = y_hat
     eval_df['bid'] = bid
-    eval_df['accuracy'] = eval_df.apply(lambda x: abs(x['y']-x['y_hat'])/(x['y']+x['y_hat'])*2, axis=1)
+    eval_df['accuracy'] = eval_df.apply(lambda x: 2*abs(x['y']-x['y_hat'])/(abs(x['y'])+abs(x['y_hat'])), axis=1)
     accuracy = eval_df['accuracy'].mean()
     return accuracy
 
 if __name__ == "__main__":
     is_offline = False
     train, test, train_label, test_label = load_data(is_offline)
-    train = model_feature_processing(train)
+
     print(train.info())
     print(train.columns)
     print(train.shape)
     print(test.columns)
 
     #特征处理
-
+    """
+     'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum'
+     
+    """
+    train, test, train_label = model_feature_processing(train, test, train_label)
     #模型训练
     model_type = 'lgb'
     label_features = []
-    onehot_features = ['accountid', 'shoptype']
+    onehot_features = ['accountid', 'shoptype', 'origid']
     features = ['createTimeDay', 'createTimeWeek', 'createTimeYear', 'createTimeMonth', 'createTimeHour',
                 'requestDateWeek',
-                'bid', 'size'] + onehot_features
+                'bid', 'size',
+                'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum'
+                ] + onehot_features
     onehot_features = []
     print(train.shape)
     preds = reg_model(train, test, train_label, model_type, onehot_features, label_features, features)
@@ -79,7 +86,7 @@ if __name__ == "__main__":
     if is_offline:
         accuracy = eval_model(test_label, preds, 1)
         print("accuracy:", accuracy)
-        #0.53
+        #accuracy: 0.22218013123411592
     else:
         df = pd.DataFrame()
         df['id'] = test['id']
