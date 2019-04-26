@@ -15,6 +15,7 @@ ad_operation_path2 = PATH2 + "ad_operation.csv"
 totalExposureLog_path = PATH + "totalExposureLog.out"
 totalExposureLog_path2 = PATH3 + "train.csv"
 totalExposureLog_path3 = PATH3 + "train_processing.csv"
+totalExposureLog_path4 = PATH3 + "train4.csv"
 test_sample_path = PATH + 'test_sample.dat'
 test_sample_path2 = PATH3 + 'test.csv'
 
@@ -58,7 +59,8 @@ def ad_operation_processing():
     ad_operation_columns = ["origid", "createModifyTime", "operationType", "modifyTag", "modifyDesc"]
     ad_operation = pd.read_csv(PATH + "ad_operation.dat", encoding="utf-8", sep="\t", names=ad_operation_columns,header=None)
 
-    ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: str(x['createModifyTime'])[0:8] if x['createModifyTime'] != 0 else 0, axis=1)
+    ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x:
+        str(x['createModifyTime'])[0:4]+'-'+str(x['createModifyTime'])[4:6]+'-'+str(x['createModifyTime'])[6:8] if x['createModifyTime'] != 0 else 0, axis=1)
     ad_operation_bid = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 2)].rename(columns={'modifyDesc': 'bid'})
     ad_operation_usergroup = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 3)].rename(columns={'modifyDesc': 'usergroup'})
     ad_operation_puttime = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 4)].rename(columns={'modifyDesc': 'putTime'})
@@ -115,6 +117,8 @@ def  totalExposureLog_processing():
     print(totalExposureLogData.info())
     totalExposureLogDataProcess = totalExposureLogData.groupby(['requestDate', 'origid', 'bid']).sum().reset_index()
     totalExposureLogDataProcess.to_csv(totalExposureLog_path2, index=False, encoding="utf-8")
+def count_origid_bids(bids):
+    return len(list(set(list(bids))))
 def  totalExposureLog_processing2():
     totalExposureLog_columns = ["requestid", "requestTime", "positionid", "userid", "origid", "size", "bid", "pctr","quality_ecpm", "totalEcpm"]
     totalExposureLog_dtypes = {"requestid": "uint32", "requestTime": "uint32", "positionid": "int32","userid": "uint32", "origid": "int32",
@@ -128,17 +132,18 @@ def  totalExposureLog_processing2():
     print(totalExposureLog.info())
     #删除重复曝光
     totalExposureLog.drop_duplicates(subset=['requestid','positionid','origid'],keep='first',inplace=True)
-    print("删除重复曝光",totalExposureLog.info())
+    print("删除重复曝光",totalExposureLog.shape)
     totalExposureLog['requestDate'] = totalExposureLog.apply(lambda x: str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x['requestTime']))).split(' ')[0], axis=1)
-    totalExposureLog = totalExposureLog[['requestDate', 'origid', 'bid']].groupby(['requestDate', 'origid', 'bid']) \
-        .size() \
-        .reset_index() \
-        .rename(columns={0: 'showNum'})
+    print("格式化日期!")
+    totalExposureLog = totalExposureLog[['requestDate', 'origid', 'bid']].groupby(['requestDate', 'origid']) \
+        .agg(['size', 'max', 'min', 'mean', count_origid_bids]) \
+        .reset_index()
     print("统计广告曝光次数",totalExposureLog.shape)
+    totalExposureLog.columns = ['requestDate', 'origid', 'showNum', 'max_bid_inday', 'min_bid_inday', 'bid', 'bid_count']
     #去除一天bid变化的数据
-    totalExposureLog.drop_duplicates(subset=['requestDate', 'origid'],keep=False,inplace=True)
-    print("去除一天bid变化的数据",totalExposureLog.shape)
-    totalExposureLog.to_csv(totalExposureLog_path3, index=False, encoding="utf-8")
+    #totalExposureLog.drop_duplicates(subset=['requestDate', 'origid'],keep=False,inplace=True)
+    #print("去除一天bid变化的数据",totalExposureLog.shape)
+    totalExposureLog.to_csv(totalExposureLog_path4, index=False, encoding="utf-8")
 def preDate(date, pre):
     if date >= '2019-03-20':
         return (datetime.datetime.strptime(date, '%Y-%m-%d') + datetime.timedelta(days=pre)).strftime("%Y-%m-%d")
@@ -161,11 +166,24 @@ def test_sample_processing():
     test_sample.to_csv(test_sample_path2, index=False, encoding="utf-8")
     return test_sample
 
-def model_feature_processing(train, test, train_label):
+def model_feature_processing(train, test):
     train['requestDateWeek'] = train.apply(lambda x: datetime.datetime.strptime(x['requestDate'], '%Y-%m-%d').weekday(), axis=1)
+    #去除行业id异常的数据
+    train = train[train['industryid'].str.contains(',')==False]
+    print(train.groupby('industryid').size())
+    #train['industryid'] = train['industryid'].astype(np.int32)
+    print("indus",train.shape)
+    #去除商品id异常的数据
+    train['shopid'] = train.apply(lambda x: x['shopid'].split(',')[0] if str(x['shopid']).find(',')!=-1 else x['shopid'], axis=1)
+    print(train.groupby('shopid').size())
+    #train['shopid'] = train['shopid'].astype(np.int32)
+    print("indus", train.shape)
+    #定位推送时间
+    #train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    #test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
     #做曝光量的统计
-    train, test, train_label = train_sta(train, test, train_label)
-    return train, test, train_label
+    train, test = train_sta(train, test)
+    return train, test
 
 def mean_rule(x, show_bid_mean):
     bid = x['bid']
@@ -215,13 +233,12 @@ def rule_model(train, test):
 
     return sub
 
-def train_sta(train, test, train_label):
+def train_sta(train, test):
     """
     'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum'
     """
     date_list = train.groupby('requestDate').size().index.tolist()
     train_rebuilt = pd.DataFrame()
-    train['showNum'] = train_label
     for date in date_list[1:]:
         print("sta show ",date)
         train_date_pre = (datetime.datetime.strptime(date, '%Y-%m-%d') - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
@@ -231,10 +248,9 @@ def train_sta(train, test, train_label):
 
         df = rule_model(df_train, df_test)
         train_rebuilt = train_rebuilt.append(df)
-    train_label = train_rebuilt['showNum']
-    train_rebuilt = train_rebuilt.drop(columns=['showNum'])
+    #train_rebuilt = train_rebuilt[train_rebuilt['requestDate']>='2019-03-01']
     test_rebuilt = rule_model(train, test)
-    return train_rebuilt, test_rebuilt, train_label
+    return train_rebuilt, test_rebuilt
 
 
 
