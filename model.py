@@ -26,7 +26,7 @@ lgb_params = {
     'reg_lambda': 5,
     'verbose': -1,
     'random_state': 4590,
-    'n_jobs': 4
+    'n_jobs': -1
 }
 xgb_params = {
         'booster': 'gbtree',
