@@ -31,6 +31,7 @@ def eval_model(y, y_hat, bid):
 
 if __name__ == "__main__":
     train, test, ad_operation, ad_static_feature, origid_size = load_data()
+    train = train[train['bid']>0]
     is_offline = False
     #数据的拼接
     train = train.merge(ad_static_feature, how="left", on=["origid"])
@@ -60,8 +61,18 @@ if __name__ == "__main__":
     if is_offline:
         test = train[train['requestDate'] == '2019-03-19']
         train = train[train['requestDate'] != '2019-03-19']
-    train_label = train['showNum']
-    
+    #训练方式1
+    #train_label = train['showNum']
+    #训练方式2
+    train['per_show'] = train['showNum'] / train['bid']
+    train_label = train['per_show']
+    test2 = test.copy()
+    test.drop(['bid','id', 'showPNum'], axis=1, inplace=True)
+    print(test.columns)
+    test.to_csv('aaa.csv', index=False)
+    test = test.drop_duplicates(subset=['origid'], keep='first')
+    print("test2",test2.shape)
+    print("test",test.shape)
     #模型训练
 
     model_type = 'lgb'
@@ -71,7 +82,7 @@ if __name__ == "__main__":
                       'requestDateWeek',
                        'createTimeDay', 'createTimeWeek', 'createTimeYear', 'createTimeMonth', 'createTimeHour',
                        'diffdays','diffmonths']
-    features = [ 'bid', 'size', 'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum','min_per_show','max_per_show',
+    features = [ 'size', 'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow','min_per_show','max_per_show','showPNum',
                 'accountid_show_max','accountid_bid_max','accountid_show_min','accountid_bid_min','accountid_show_mean','accountid_bid_mean',
                 'shopid_show_max', 'shopid_bid_max', 'shopid_show_min', 'shopid_bid_min', 'shopid_show_mean','shopid_bid_mean',
                 'shoptype_show_max', 'shoptype_bid_max', 'shoptype_show_min', 'shoptype_bid_min', 'shoptype_show_mean','shoptype_bid_mean',
@@ -86,21 +97,28 @@ if __name__ == "__main__":
 
 
     if is_offline:
-        test_label = test['showNum']
-        smape, mse = eval_model(test_label, preds, 1)
+        #训练方式1
+        # test_label = test['showNum']
+        # smape, mse = eval_model(test_label, preds, 1)
+        # print("score:", smape, mse)
+
+        #训练方式2
+        test['label'] = preds
+        test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
+        test2['preds'] = test2.apply(lambda x: x['bid']*x['label'], axis=1)
+        test_label = test2['showNum']
+        smape, mse = eval_model(test_label, test2['preds'], 1)
         print("score:", smape, mse)
-        #accuracy: 0.22218013123411592
     else:
+        #训练方式2
+        test['label'] = preds
+        test2 = test2.merge(test[['origid', 'label']], how='left', on=['origid'])
+        test2['preds'] = test2.apply(lambda x: round(x['bid'] * x['label'],4), axis=1)
+
         df = pd.DataFrame()
-        df['id'] = test['id']
-        pp = []
-        for i in preds:
-            if i<0:
-                pp.append(0)
-            else:
-                pp.append(round(i,4))
-        df['y'] = pp
-        df.to_csv("./data/submissionA/submission.csv", index=False, header=None)
+        df['id'] = test2['id']
+        df['y'] = test2['preds']
+        df.to_csv("./data/submissionA/model.csv", index=False, header=None)
 
 '''
 score: 0.9971306556591262 31544.725852910662

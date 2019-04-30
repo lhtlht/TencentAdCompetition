@@ -213,9 +213,9 @@ def model_feature_processing(train, test):
     #做曝光量的统计
 
     #针对test的处理
-    test['bid_count'] = np.ones(test.shape[0])
-    test['min_bid_inday'] = test['bid']
-    test['max_bid_inday'] = test['bid']
+    #test['bid_count'] = np.ones(test.shape[0])
+    #test['min_bid_inday'] = test['bid']
+    #test['max_bid_inday'] = test['bid']
 
 
     train, test = train_sta(train, test)
@@ -225,6 +225,7 @@ def model_feature_processing(train, test):
 
     test['min_per_show'] = test['minshow'] / test['minbid']
     test['max_per_show'] = test['maxshow'] / test['maxbid']
+
     return train, test
 
 def mean_rule(x, show_bid_mean, weeks):

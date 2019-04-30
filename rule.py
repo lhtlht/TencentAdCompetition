@@ -17,8 +17,15 @@ def mean_rule(x, show_bid_mean, weeks):
     minshow = x['minshow']
     meanshow = x['meanshow']
     usergroup = x['usergroup']
+    bid_list = [int(i) for i in x['bid_list'].split(',')]
+    test_min_bid = min(bid_list)
+    test_max_bid = max(bid_list)
+
     if origidBidMean >= 0.1:
-        return origidBidMean
+        if maxshow <= minshow:
+            return round(minshow / minbid * bid, 4)
+        else:
+            return round(origidBidMean,4)
     elif maxbid >= 0.1:
         if maxshow <= minshow:
             return round(minshow / minbid * bid, 4)
@@ -64,18 +71,28 @@ def rule_model(train, test):
 
     return sub
 
-if __name__ == "__main__":
-    sub = rule_model(train, test)
-    print(sub.columns)
-    sub[['id','showPNum']].to_csv("./data/submissionA/0428_v1.csv", index=False, header=None)
+def redown_bids(bids):
+    return ','.join([str(bid) for bid in bids])
 
-    # rule_ = pd.read_csv("./data/submissionA/submission_rule.csv", encoding="utf-8", names=['id','rule_show'])
-    # model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id','model_show'])
-    #
-    # rule_model = pd.DataFrame()
-    # rule_model = rule_.merge(model_, how="left", on="id")
-    # rule_model['showNum'] = rule_model.apply(lambda x: x['rule_show']*0.8+x['model_show']*0.2, axis=1)
-    # rule_model[['id','showNum']].to_csv("./data/submissionA/rule_model.csv", index=False, header=None)
+if __name__ == "__main__":
+    # test_bid_list = test.groupby('origid').agg({'bid':redown_bids}).reset_index().rename(columns={'bid':'bid_list'})
+    # test = test.merge(test_bid_list, how='left', on='origid')
+    # sub = rule_model(train, test)
+    # print(sub.columns)
+    # sub[['id','showPNum']].to_csv("./data/submissionA/0429_v1.csv", index=False, header=None)
+
+    # model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
+    # sub = sub.merge(model_, how="left", on="id")
+    # sub['showPNum'] = sub.apply(lambda x: x['model_show'] if x['maxbid']<0.1 else x['showPNum'], axis=1)
+    # sub[['id', 'showPNum']].to_csv("./data/submissionA/0430_v1.csv", index=False, header=None)
+
+
+    rule_ = pd.read_csv("./data/submissionA/submission_rule.csv", encoding="utf-8", names=['id','rule_show'])
+    model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id','model_show'])
+    rule_model = pd.DataFrame()
+    rule_model = rule_.merge(model_, how="left", on="id")
+    rule_model['showNum'] = rule_model.apply(lambda x: round(x['rule_show']*0.9+x['model_show']*0.1,4), axis=1)
+    rule_model[['id','showNum']].to_csv("./data/submissionA/rule_model.csv", index=False, header=None)
 
 
 
