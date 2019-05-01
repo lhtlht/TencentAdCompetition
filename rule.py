@@ -43,6 +43,10 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
         if x['accountid'] in accountid_mean_dict:
             weights.append(accountid_mean_dict[x['accountid']])
         total_mean = np.mean(weights)
+        if usergroup == 'all':
+            total_mean = total_mean*1.2
+        else:
+            total_mean = total_mean * 0.8
         return round(total_mean * bid, 4)
 
 def rule_model(train, test):
@@ -67,6 +71,8 @@ def rule_model(train, test):
     accountid_mean = train[['accountid', 'showNum', 'bid']].groupby('accountid').agg('mean').reset_index()
     accountid_mean['accountid_mean'] = accountid_mean['showNum'] / accountid_mean['bid']
     accountid_mean_dict = dict(zip(accountid_mean['accountid'], accountid_mean['accountid_mean']))
+
+
 
     origid_bid = train[['origid','bid','showNum']].groupby(['origid','bid']).mean().reset_index().rename(columns={'showNum':'origidBidMean'})
     origidMax = train[['origid','bid']].groupby(['origid']).max().reset_index()
@@ -109,9 +115,12 @@ if __name__ == "__main__":
 
     test_bid_list = test.groupby('origid').agg({'bid':redown_bids}).reset_index().rename(columns={'bid':'bid_list'})
     test = test.merge(test_bid_list, how='left', on='origid')
+
+
+
     sub = rule_model(train, test)
     print(sub.columns)
-    sub[['id','showPNum']].to_csv("./data/submissionA/0501_v1.csv", index=False, header=None)
+    sub[['id','showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
     # model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
     # sub = sub.merge(model_, how="left", on="id")

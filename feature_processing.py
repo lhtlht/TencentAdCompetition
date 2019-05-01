@@ -72,8 +72,16 @@ def ad_operation_processing():
     ad_operation_puttime = ad_operation[(ad_operation['operationType'] == 2) & (ad_operation['modifyTag'] == 4)].rename(columns={'modifyDesc': 'putTime'})
 
     ad_operation_bid2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 2)].rename(columns={'modifyDesc': 'bid'})
+    ad_operation_bid2 = ad_operation_bid2.drop_duplicates()
+    ad_operation_bid2 = ad_operation_bid2.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep=False)
+
     ad_operation_usergroup2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 3)].rename(columns={'modifyDesc': 'usergroup'})
+    ad_operation_usergroup2 = ad_operation_usergroup2.drop_duplicates()
+    ad_operation_usergroup2 = ad_operation_usergroup2.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep=False)
+
     ad_operation_puttime2 = ad_operation[(ad_operation['operationType'] == 1) & (ad_operation['modifyTag'] == 4)].rename(columns={'modifyDesc': 'putTime'})
+    ad_operation_puttime2 = ad_operation_puttime2.drop_duplicates()
+    ad_operation_puttime2 = ad_operation_puttime2.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep=False)
 
     ad_operation_re = ad_operation_bid
     ad_operation_re = ad_operation_re.merge(ad_operation_usergroup[['origid', 'usergroup']], how="left", on="origid")
@@ -133,7 +141,7 @@ def count_origid_bids(bids):
 def  totalExposureLog_processing2():
     totalExposureLog_columns = ["requestid", "requestTime", "positionid", "userid", "origid", "size", "bid", "pctr","quality_ecpm", "totalEcpm"]
     totalExposureLog_dtypes = {"requestid": "uint32", "requestTime": "uint32", "positionid": "int32","userid": "uint32", "origid": "int32",
-                               "size": "int16", "bid": "int16", "pctr": "float32", "quality_ecpm": "float32",
+                               "size": "int16",  "pctr": "float32", "quality_ecpm": "float32",
                                "totalEcpm": "float32"}
     totalExposureLog = pd.read_csv(totalExposureLog_path, encoding="utf-8", sep="\t",
                                    names=totalExposureLog_columns, header=None,
@@ -147,7 +155,7 @@ def  totalExposureLog_processing2():
         origid_size_drop_duplicates.to_csv(exposure_origid_size_path, index=False, encoding="utf-8")
         #假设投放时间不变，计算投放时间
         #假设投放客群不变，计算投放客群大小
-        origid_put_time = totalExposureLog[['origid','requestTime']].groupby(['origid']).agg('max','min').reset_index()
+        #origid_put_time = totalExposureLog[['origid','requestTime']].groupby(['origid']).agg('max','min').reset_index()
         sys.exit(-1)
     totalExposureLog = totalExposureLog[["requestid","requestTime","positionid","origid","bid"]]
     #3.4G
@@ -203,13 +211,13 @@ def model_feature_processing(train, test):
     train = train[train['industryid'].str.contains(',')==False]
     train['industryid'] = train['industryid'].astype(np.int32)
     #去除商品id异常的数据
-    train = train[train['shopid'].str.contains(',') == False]
-    train['shopid'] = train['shopid'].astype(np.int32)
+    #train = train[train['shopid'].str.contains(',') == False]
+    #train['shopid'] = train['shopid'].astype(np.int32)
     #定位推送时间
-    train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
-    test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
-    train['push_long'] = train.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
-    test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
+    # train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    # test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    # train['push_long'] = train.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
+    # test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
     #做曝光量的统计
 
     #针对test的处理
@@ -370,9 +378,9 @@ def train_sta(train, test):
 if __name__ == "__main__":
     #第一步处理
     #ad_static_feature_processing()
-    #ad_operation_processing()
+    ad_operation_processing()
     #totalExposureLog_processing()
-    user_data_processing()
+    #user_data_processing()
     #test_sample_processing()
 
     #额外的曝光日志处理
