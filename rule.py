@@ -103,7 +103,7 @@ def redown_bids(bids):
 
 if __name__ == "__main__":
     train = pd.read_csv(totalExposureLog_path3, encoding="utf-8")  # 02/16-03/19
-    print(train.shape)
+    train = train[train['bid']>0]
     ad_static_feature = pd.read_csv(ad_static_feature_path2, encoding="utf-8")
     origid_size = pd.read_csv(exposure_origid_size_path, encoding="utf-8")
     train = train.merge(ad_static_feature, how="left", on=["origid"])
@@ -120,10 +120,10 @@ if __name__ == "__main__":
     print(sub.columns)
     sub[['id','showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
-    # model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
-    # sub = sub.merge(model_, how="left", on="id")
-    # sub['showPNum'] = sub.apply(lambda x: round(x['showPNum']*0.9+x['model_show']*0.1,4) if x['maxbid']<0.1 else x['showPNum'], axis=1)
-    # sub[['id', 'showPNum']].to_csv("./data/submissionA/0430_v1.csv", index=False, header=None)
+    #model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
+    #sub = sub.merge(model_, how="left", on="id")
+    #sub['showPNum'] = sub.apply(lambda x: round(x['model_show'],4) if x['maxbid']<0.1 else x['showPNum'], axis=1)
+    #sub[['id', 'showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
 
     # rule_ = pd.read_csv("./data/submissionA/submission_rule.csv", encoding="utf-8", names=['id','rule_show'])

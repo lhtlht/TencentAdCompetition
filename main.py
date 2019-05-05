@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import matplotlib.pyplot as plt
 import pickle
 from feature_processing import *
 from model import *
@@ -31,9 +32,12 @@ def eval_model(y, y_hat, bid):
 
 def modify_time_date_list(ModifyTimeDates):
     return list(ModifyTimeDates)
+
+def join_puttime():
+    pass
 if __name__ == "__main__":
     is_offline = False
-    is_load_data = True
+    is_load_data = False
     if is_load_data:
         train, test, ad_operation, ad_static_feature, origid_size = load_data()
         #训练数据的整理
@@ -45,15 +49,24 @@ if __name__ == "__main__":
         train = train.merge(ad_static_feature, how="left", on=["origid"])
         train.drop(['size'], axis=1, inplace=True)
         train = train.merge(origid_size, how="left", on=["origid"])
-
-
         train.dropna(subset=['createTimeDate'], inplace=True)
+
         ad_operation = ad_operation.merge(ad_static_feature[['origid','createTimeDate']], how='left', on=['origid'])
         ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: x['createTimeDate'] if x['operationType']==2 else x['ModifyTimeDate'], axis=1)
         ad_operation.drop(['createTimeDate'], axis=1, inplace=True)
         ad_operation.drop(['createModifyTime'], axis=1, inplace=True)
         ad_operation.drop(['modifyTag'], axis=1, inplace=True)
         ad_operation.drop(['operationType'], axis=1, inplace=True)
+        #对投放时间、客群的拼接
+        origid_timelist = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list})
+        origid_timelist = origid_timelist.rename(columns={'ModifyTimeDate':'modify_time_date_list'})
+        ad_operation = ad_operation.merge(origid_timelist, how='left', on='origid')
+
+        train = train.merge(ad_operation, how='left', on='origid')
+        train['is_drop'] = train.apply(lambda x: join_puttime(x), axis=1)
+
+
+
 
         f_train = open(PATH3+'train.pkl', 'wb')
         pickle.dump(train, f_train)
@@ -66,6 +79,9 @@ if __name__ == "__main__":
         f_train = open(PATH3 + 'train.pkl', 'rb')
         train = pickle.load(f_train)
         f_train.close()
+        #去除异常值
+
+        train = train[(train['showNum']<100) & (train['bid']<1000)]
 
         f_test = open(PATH3 + 'test.pkl', 'rb')
         test = pickle.load(f_test)
@@ -96,43 +112,48 @@ if __name__ == "__main__":
     if is_offline:
         test = train[train['requestDate'] == '2019-03-19']
         train = train[train['requestDate'] != '2019-03-19']
-
+    else:
+        test2 = test.copy()
+        test = test.drop_duplicates(subset=['origid','requestDate'], keep='first')
     train_label = train['showNum']
-    test2 = test.copy()
-    test = test.drop_duplicates(subset=['origid','requestDate'], keep='first')
     #模型训练
 
     model_type = 'lgb'
-    label_features = ['accountid', 'shoptype', 'origid', 'industryid',
+    label_features = ['accountid', 'shoptype', 'origid', 'industryid','shopid',
                       'createTimeDay', 'createTimeWeek', 'createTimeYear', 'createTimeMonth', 'createTimeHour']
-    onehot_features = ['accountid', 'shoptype', 'origid', 'industryid',
+    onehot_features = ['accountid', 'shoptype', 'origid', 'industryid','shopid',
                       'requestDateWeek','createTimeWeek',
                        'diffdays','diffmonths']
-    features = [ 'size', 'maxshow', 'minshow', 'meanshow',
-                'accountid_show_max','accountid_show_min','accountid_show_mean',
-                'shopid_show_max', 'shopid_show_min', 'shopid_show_mean',
-                'shoptype_show_max', 'shoptype_show_min', 'shoptype_show_mean',
-                'industryid_show_max', 'industryid_show_min','industryid_show_mean',
+    features = [ 'size', 'maxshow', 'minshow', 'meanshow','origidBidMean','total_diff',
+               'origid_show_mean','origid_diff',
+               'accountid_show_mean','accountid_diff',
+                 'shopid_show_mean','shopid_diff',
+                'shoptype_show_mean','shoptype_diff',
+                'industryid_show_mean','industryid_diff',
+                 'meanshow_history', 'maxshow_history', 'minshow_history',
+                 'origid_show_mean_history','accountid_show_mean_history','shopid_show_mean_history',
+                 'shoptype_show_mean_history','industryid_show_mean_history',
+                 'last_show'
                 ]
     #onehot_features = []
     print(train.shape)
     print(train.info())
+    print(test.info())
     preds = reg_model(train, test, train_label, model_type, onehot_features, label_features, features)
 
     if is_offline:
         #训练方式2
         test['label'] = preds
-        test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
-        test2['preds'] = test2.apply(lambda x: x['bid']*x['label'], axis=1)
-        test_label = test2['showNum']
-        smape, mse = eval_model(test_label, test2['preds'], 1)
+        test_label = test['showNum']
+        smape, mse = eval_model(test_label, test['label'], 1)
         print("score:", smape, mse)
     else:
         #训练方式2
         test['label'] = preds
+        test['sl'] = test['label']/test['bid']
         test = test.rename(columns={'bid':'pre_bid'})
         print(test.columns)
-        test2 = test2.merge(test[['origid','label','pre_bid']], how='left', on=['origid'])
+        test2 = test2.merge(test[['origid','label','pre_bid','sl']], how='left', on=['origid'])
         test2['preds'] = test2.apply(lambda x: x['label']+(x['bid']-x['pre_bid'])*0.0001, axis=1)
 
 
@@ -141,8 +162,18 @@ if __name__ == "__main__":
         df['id'] = test2['id']
         df['y'] = test2['preds']
         df['y'] = df.apply(lambda x: round(x['y'],4), axis=1)
-        df.to_csv("./data/submissionA/model.csv", index=False, header=None)
+        df.to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
 '''
+score: 0.7341809492043748 22533.031697817303
+score: 0.7337858462047834 23270.84441165036
+score: 0.723468839768221 23477.177423585505
+score: 0.7265117959409166 21906.77865294984
+score: 0.7215252196709249 23027.287463769775
 
+score: 0.7190696074609102 22391.06278183768
+score: 0.7183270629199415 21902.71653019669
+score: 0.7105138082466956 21392.573749205058
+
+score: 0.7142908658712231 21259.58862208378
 '''

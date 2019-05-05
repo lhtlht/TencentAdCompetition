@@ -212,7 +212,7 @@ def model_feature_processing(train, test):
     train['industryid'] = train['industryid'].astype(np.int32)
     #去除商品id异常的数据
     #train = train[train['shopid'].str.contains(',') == False]
-    #train['shopid'] = train['shopid'].astype(np.int32)
+    train['shopid'] = train['shopid'].astype(np.int32)
     #定位推送时间
     # train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
     # test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
@@ -234,33 +234,11 @@ def model_feature_processing(train, test):
     test['min_per_show'] = test['minshow'] / test['minbid']
     test['max_per_show'] = test['maxshow'] / test['maxbid']
 
+    train['bid'] = train['bid'].astype(np.int32)
+    test['bid'] = test['bid'].astype(np.int32)
     return train, test
 
-def mean_rule(x, show_bid_mean, weeks):
-    x_week = x['requestDateWeek']
-    bid = x['bid']
-    origidBidMean = x['origidBidMean']
-    maxbid = x['maxbid']
-    maxshow = x['maxshow']
-    minbid = x['minbid']
-    minshow = x['minshow']
-    meanshow = x['meanshow']
-    if origidBidMean >= 0.1:
-        return origidBidMean
-    elif maxbid >= 0.1:
-        if maxshow <= minshow:
-            return round(minshow / (minbid+0.1) * bid, 4)
-        else:
-            slope = (maxshow - minshow) / (maxbid - minbid)
-            bb = bid - minbid
-            return round(minshow + bb * slope, 4)
-    else:
-        try:
-            return round(weeks[x_week] * bid, 4)
-        except:
-            return round(show_bid_mean * bid, 4)
 def rule_model(train, test):
-
     origid_bid = train[['origid','bid','showNum']].groupby(['origid','bid']).mean().reset_index().rename(columns={'showNum':'origidBidMean'})
     origidMax = train[['origid','bid']].groupby(['origid']).max().reset_index()
     origidMin = train[['origid','bid']].groupby(['origid']).min().reset_index()
@@ -271,16 +249,21 @@ def rule_model(train, test):
     origidMin = origidMin.groupby(['origid','bid']).mean().reset_index().rename(columns={'bid':'minbid', 'showNum':'minshow'})
     origidMean = train[['origid','showNum']].groupby(['origid']).mean().reset_index().rename(columns={'showNum':'meanshow'})
     show_mean = train['showNum'].mean()
-    bid_mean = train['bid'].mean()
     show_max = train['showNum'].max()
-    bid_max = train['bid'].max()
     show_min = train['showNum'].min()
-    bid_min = train['bid'].min()
-    show_bid_mean = show_mean/bid_mean
     #对周进行统计
     week_show_mean = train[['requestDateWeek', 'showNum']].groupby('requestDateWeek').mean().reset_index()
     week_bid_mean = train[['requestDateWeek', 'bid']].groupby('requestDateWeek').mean().reset_index()
     weeks = week_show_mean['showNum'] / week_bid_mean['bid']
+    #对origid统计
+    origid_max = train.groupby('origid').agg({'showNum': 'max', 'bid': 'max'}).reset_index()
+    origid_max.columns = ['origid', 'origid_show_max', 'origid_bid_max']
+    origid_min = train.groupby('origid').agg({'showNum': 'min', 'bid': 'min'}).reset_index()
+    origid_min.columns = ['origid', 'origid_show_min', 'origid_bid_min']
+    origid_mean = train.groupby('origid').agg({'showNum': 'mean', 'bid': 'mean'}).reset_index()
+    origid_mean.columns = ['origid', 'origid_show_mean', 'origid_bid_mean']
+    origid_sta = origid_max.merge(origid_min, how='left', on='origid')
+    origid_sta = origid_sta.merge(origid_mean, how='left', on='origid')
     #对accountid特征进行统计
     accountid_max = train.groupby('accountid').agg({'showNum': 'max', 'bid': 'max'}).reset_index()
     accountid_max.columns = ['accountid', 'accountid_show_max', 'accountid_bid_max']
@@ -324,35 +307,55 @@ def rule_model(train, test):
     sub = sub.merge(origidMin, how="left", on=['origid'])
     sub = sub.merge(origidMean, how="left", on=['origid'])
 
+    sub = sub.merge(origid_sta, how='left', on=['origid'])
     sub = sub.merge(accountid_sta, how='left', on=['accountid'])
     sub = sub.merge(shopid_sta, how='left', on=['shopid'])
     sub = sub.merge(shoptype_sta, how='left', on=['shoptype'])
     sub = sub.merge(industryid_sta, how='left', on=['industryid'])
-    sub.fillna(0,inplace=True)
-    sub['showPNum'] = sub.apply(lambda x: mean_rule(x, show_bid_mean, weeks), axis=1)
-    sub['maxbid'] = sub.apply(lambda x: bid_max if x['maxbid']<0.01 else x['maxbid'], axis=1)
-    sub['maxshow'] = sub.apply(lambda x: show_max if x['maxshow']<0.01 else x['maxshow'], axis=1)
-    sub['minbid'] = sub.apply(lambda x: bid_min if x['minbid']<0.01 else x['minbid'], axis=1)
-    sub['minshow'] = sub.apply(lambda x: show_min if x['minshow']<0.01 else x['minshow'], axis=1)
-    sub['meanshow'] = sub.apply(lambda x: show_mean if x['meanshow']<0.01 else x['meanshow'], axis=1)
 
-    sub['accountid_show_max'] = sub.apply(lambda x: show_max if x['accountid_show_max'] < 0.01 else x['accountid_show_max'], axis=1)
-    sub['accountid_show_min'] = sub.apply(lambda x: show_min if x['accountid_show_min'] < 0.01 else x['accountid_show_min'], axis=1)
-    sub['accountid_bid_min'] = sub.apply(lambda x: bid_min if x['accountid_bid_min'] < 0.01 else x['accountid_bid_min'], axis=1)
-    sub['accountid_bid_min'] = sub.apply(lambda x: bid_min if x['accountid_bid_min'] < 0.01 else x['accountid_bid_min'], axis=1)
-    sub['shopid_show_max'] = sub.apply(lambda x: show_max if x['shopid_show_max'] < 0.01 else x['shopid_show_max'],axis=1)
-    sub['shopid_show_min'] = sub.apply(lambda x: show_min if x['shopid_show_min'] < 0.01 else x['shopid_show_min'],axis=1)
-    sub['shopid_bid_min'] = sub.apply(lambda x: bid_min if x['shopid_bid_min'] < 0.01 else x['shopid_bid_min'], axis=1)
-    sub['shopid_bid_min'] = sub.apply(lambda x: bid_min if x['shopid_bid_min'] < 0.01 else x['shopid_bid_min'], axis=1)
-    sub['shoptype_show_max'] = sub.apply(lambda x: show_max if x['shoptype_show_max'] < 0.01 else x['shoptype_show_max'], axis=1)
-    sub['shoptype_show_min'] = sub.apply(lambda x: show_min if x['shoptype_show_min'] < 0.01 else x['shoptype_show_min'], axis=1)
-    sub['shoptype_bid_min'] = sub.apply(lambda x: bid_min if x['shoptype_bid_min'] < 0.01 else x['shoptype_bid_min'],axis=1)
-    sub['shoptype_bid_min'] = sub.apply(lambda x: bid_min if x['shoptype_bid_min'] < 0.01 else x['shoptype_bid_min'],axis=1)
-    sub['industryid_show_max'] = sub.apply(lambda x: show_max if x['industryid_show_max'] < 0.01 else x['industryid_show_max'], axis=1)
-    sub['industryid_show_min'] = sub.apply(lambda x: show_min if x['industryid_show_min'] < 0.01 else x['industryid_show_min'], axis=1)
-    sub['industryid_bid_min'] = sub.apply(lambda x: bid_min if x['industryid_bid_min'] < 0.01 else x['industryid_bid_min'], axis=1)
-    sub['industryid_bid_min'] = sub.apply(lambda x: bid_min if x['industryid_bid_min'] < 0.01 else x['industryid_bid_min'], axis=1)
+    sub['origidBidMean'] = sub['origidBidMean'].fillna(show_max)
+    sub['maxshow'] = sub['maxshow'].fillna(show_max)
+    sub['minshow'] = sub['minshow'].fillna(show_min)
+    sub['meanshow'] = sub['meanshow'].fillna(show_mean)
+
+    sub['origid_show_max'] = sub['origid_show_max'].fillna(show_max)
+    sub['origid_show_min'] = sub['origid_show_min'].fillna(show_min)
+    sub['origid_show_mean'] = sub['origid_show_mean'].fillna(show_mean)
+    sub['accountid_show_max'] = sub['accountid_show_max'].fillna(show_max)
+    sub['accountid_show_min'] = sub['accountid_show_min'].fillna(show_min)
+    sub['accountid_show_mean'] = sub['accountid_show_mean'].fillna(show_mean)
+    sub['shopid_show_max'] = sub['shopid_show_max'].fillna(show_max)
+    sub['shopid_show_min'] = sub['shopid_show_min'].fillna(show_min)
+    sub['shopid_show_mean'] = sub['shopid_show_mean'].fillna(show_mean)
+    sub['shoptype_show_max'] = sub['shoptype_show_max'].fillna(show_max)
+    sub['shoptype_show_min'] = sub['shoptype_show_min'].fillna(show_min)
+    sub['shoptype_show_mean'] = sub['shoptype_show_mean'].fillna(show_mean)
+    sub['industryid_show_max'] = sub['industryid_show_max'].fillna(show_max)
+    sub['industryid_show_min'] = sub['industryid_show_min'].fillna(show_min)
+    sub['industryid_show_mean'] = sub['industryid_show_mean'].fillna(show_mean)
+
+    sub['total_diff'] = sub['maxshow'] - sub['minshow']
+    sub['origid_diff'] = sub['origid_show_max'] - sub['origid_show_min']
+    sub['accountid_diff'] = sub['accountid_show_max'] - sub['accountid_show_min']
+    sub['shopid_diff'] = sub['shopid_show_max'] - sub['shopid_show_min']
+    sub['shoptype_diff'] = sub['shoptype_show_max'] - sub['shoptype_show_min']
+    sub['industryid_diff'] = sub['industryid_show_max'] - sub['industryid_show_min']
+
+
     return sub
+
+def last_sta(train, test):
+    show_mean = train['showNum'].mean()
+    train.sort_values(by=['origid','requestDate'], ascending=[True,False],inplace=True)
+    train = train.drop_duplicates(subset=['origid'], keep='first')
+    train['last_show'] = train['showNum']
+    test = test.merge(train, how='left', on='origid')
+    test['last_show'] = test['last_show'].fillna(show_mean)
+
+    return test
+
+
+
 
 def train_sta(train, test):
     """
@@ -362,15 +365,58 @@ def train_sta(train, test):
     train_rebuilt = pd.DataFrame()
     for date in date_list[1:]:
         print("sta show ",date)
+        df_test = train[train['requestDate'] == date]
+        #7天时间窗统计
         train_date_pre = (datetime.datetime.strptime(date, '%Y-%m-%d') - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         df_train = train[(train['requestDate']<date) &  (train['requestDate']>=train_date_pre)]
-        #df_train = train[train['requestDate'] < date]
-        df_test = train[train['requestDate']==date]
-
         df = rule_model(df_train, df_test)
+        #历史统计
+        df_train_history = train[train['requestDate'] < date]
+        df_history = rule_model(df_train_history, df_test)
+        df_history = df_history.rename(columns={'meanshow':'meanshow_history',
+                                                'maxshow':'maxshow_history',
+                                                'minshow':'minshow_history',
+                                                'origid_show_mean': 'origid_show_mean_history',
+                                                'accountid_show_mean': 'accountid_show_mean_history',
+                                                'shopid_show_mean': 'shopid_show_mean_history',
+                                                'shoptype_show_mean': 'shoptype_show_mean_history',
+                                                'industryid_show_mean': 'industryid_show_mean_history',
+                                                })
+        #最近统计
+        df_last = last_sta(df_train_history, df_test)
+
+        df = pd.concat([df,
+                        df_history[['meanshow_history','maxshow_history','minshow_history',
+                                    'origid_show_mean_history', 'accountid_show_mean_history',
+                                    'shopid_show_mean_history',
+                                    'shoptype_show_mean_history', 'industryid_show_mean_history',
+                                    ]],
+                        df_last[['last_show']]], axis=1)
         train_rebuilt = train_rebuilt.append(df)
-    #train_rebuilt = train_rebuilt[train_rebuilt['requestDate']>='2019-03-01']
-    test_rebuilt = rule_model(train, test)
+
+    df_train = train[train['requestDate'] >= '2019-03-12']
+    #7天窗口
+    test_window = rule_model(df_train, test)
+    #历史
+    test_history = rule_model(train, test)
+    test_history = test_history.rename(columns={'meanshow': 'meanshow_history',
+                                            'maxshow': 'maxshow_history',
+                                            'minshow': 'minshow_history',
+                                               'origid_show_mean':'origid_show_mean_history',
+                                               'accountid_show_mean':'accountid_show_mean_history',
+                                               'shopid_show_mean':'shopid_show_mean_history',
+                                               'shoptype_show_mean':'shoptype_show_mean_history',
+                                               'industryid_show_mean':'industryid_show_mean_history',
+                                               })
+    #最近统计
+    test_last = last_sta(train, test)
+    test_rebuilt = pd.concat([test_window,
+                              test_history[['meanshow_history', 'maxshow_history', 'minshow_history',
+                                            'origid_show_mean_history', 'accountid_show_mean_history',
+                                            'shopid_show_mean_history',
+                                            'shoptype_show_mean_history', 'industryid_show_mean_history',
+                                            ]],
+                              test_last[['last_show']]], axis=1)
     return train_rebuilt, test_rebuilt
 
 
