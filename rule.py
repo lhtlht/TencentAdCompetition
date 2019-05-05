@@ -18,12 +18,14 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
 
     if origidBidMean >= 0.1:
         if maxshow <= minshow:
-            return round(minshow / minbid * bid, 4)
+            #return round(minshow / minbid * bid, 4)
+            return round(minshow+(bid-minbid)*0.001, 4)
         else:
             return round(origidBidMean,4)
     elif maxbid >= 0.1:
         if maxshow <= minshow:
-            return round(minshow / minbid * bid, 4)
+            #return round(minshow / minbid * bid, 4)
+            return round(minshow + (bid - minbid) * 0.001, 4)
         else:
             slope = (maxshow - minshow) / (maxbid - minbid)
             bb = (bid - minbid)

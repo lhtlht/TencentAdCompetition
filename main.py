@@ -130,11 +130,13 @@ if __name__ == "__main__":
     else:
         #训练方式2
         test['label'] = preds
-        test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
-        test2['preds'] = test2.apply(lambda x: x['label']+x['bid']*0.0001, axis=1)
+        test = test.rename(columns={'bid':'pre_bid'})
+        print(test.columns)
+        test2 = test2.merge(test[['origid','label','pre_bid']], how='left', on=['origid'])
+        test2['preds'] = test2.apply(lambda x: x['label']+(x['bid']-x['pre_bid'])*0.0001, axis=1)
 
 
-        test2[['origid','bid','preds']].to_csv("./data/submissionA/model_test.csv", index=False)
+        test2[['origid','bid','preds','pre_bid']].to_csv("./data/submissionA/model_test.csv", index=False)
         df = pd.DataFrame()
         df['id'] = test2['id']
         df['y'] = test2['preds']
