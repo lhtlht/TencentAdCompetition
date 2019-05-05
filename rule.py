@@ -15,9 +15,6 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
     minshow = x['minshow']
     meanshow = x['meanshow']
     usergroup = x['usergroup']
-    bid_list = [int(i) for i in x['bid_list'].split(',')]
-    test_min_bid = min(bid_list)
-    test_max_bid = max(bid_list)
 
     if origidBidMean >= 0.1:
         if maxshow <= minshow:
@@ -96,7 +93,6 @@ def rule_model(train, test):
     sub = sub.merge(origidMean, how="left", on=['origid'])
     sub.fillna(0,inplace=True)
     sub['showPNum'] = sub.apply(lambda x: mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid_mean_dict,shoptype_mean_dict,accountid_mean_dict), axis=1)
-    #sub['showPNum'] = sub.apply(lambda x: 0 if x['showPNum']<0 else x['showPNum'], axis=1)
 
     return sub
 

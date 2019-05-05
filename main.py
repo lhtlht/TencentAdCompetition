@@ -97,7 +97,7 @@ if __name__ == "__main__":
         test = train[train['requestDate'] == '2019-03-19']
         train = train[train['requestDate'] != '2019-03-19']
 
-    train_label = train['showNum']/train['bid']
+    train_label = train['showNum']
     test2 = test.copy()
     test = test.drop_duplicates(subset=['origid','requestDate'], keep='first')
     #模型训练
@@ -108,7 +108,7 @@ if __name__ == "__main__":
     onehot_features = ['accountid', 'shoptype', 'origid', 'industryid',
                       'requestDateWeek','createTimeWeek',
                        'diffdays','diffmonths']
-    features = [ 'size', 'maxshow', 'minshow', 'meanshow','showPNum',
+    features = [ 'size', 'maxshow', 'minshow', 'meanshow',
                 'accountid_show_max','accountid_show_min','accountid_show_mean',
                 'shopid_show_max', 'shopid_show_min', 'shopid_show_mean',
                 'shoptype_show_max', 'shoptype_show_min', 'shoptype_show_mean',
@@ -120,23 +120,18 @@ if __name__ == "__main__":
     preds = reg_model(train, test, train_label, model_type, onehot_features, label_features, features)
 
     if is_offline:
-        #训练方式1
-        test_label = test['showNum']
-        smape, mse = eval_model(test_label, preds, 1)
-        print("score:", smape, mse)
-
-        #训练方式2
-        # test['label'] = preds
-        # test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
-        # test2['preds'] = test2.apply(lambda x: x['bid']*x['label'], axis=1)
-        # test_label = test2['showNum']
-        # smape, mse = eval_model(test_label, test2['preds'], 1)
-        # print("score:", smape, mse)
-    else:
         #训练方式2
         test['label'] = preds
         test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
         test2['preds'] = test2.apply(lambda x: x['bid']*x['label'], axis=1)
+        test_label = test2['showNum']
+        smape, mse = eval_model(test_label, test2['preds'], 1)
+        print("score:", smape, mse)
+    else:
+        #训练方式2
+        test['label'] = preds
+        test2 = test2.merge(test[['origid','label']], how='left', on=['origid'])
+        test2['preds'] = test2.apply(lambda x: x['label']+x['bid']*0.0001, axis=1)
 
 
         test2[['origid','bid','preds']].to_csv("./data/submissionA/model_test.csv", index=False)
@@ -147,23 +142,5 @@ if __name__ == "__main__":
         df.to_csv("./data/submissionA/model.csv", index=False, header=None)
 
 '''
-score: 0.9971306556591262 31544.725852910662
-score: 0.99399116229978 31021.509996575594
-score: 0.9309015162426666 24216.32767524884
-score: 0.9208840269805185 21326.14291694565
-score: 0.9003178452924103 18555.374841425044
-score: 0.8980395111836456 15674.153269153869
-score: 0.8969419554551985 15625.634356532168
-#score: 0.8952229023152118 16121.30718707234 加入时间特征
-score: 0.8934592290192702 15737.935059898207
-score: 0.8930517245745755 15644.52259788667
-score: 0.871598811032124 13924.310087500198
-score: 0.8622524896124545 14840.757578139921
-score: 0.8659885650423385 13198.04380563072 加入shopid
-score: 0.863496130509283 12842.388884640062
-score: 0.8698089182564406 12691.760714663831 industryid
-score: 0.8675575150121594 12612.047287057945
-score: 0.851918502291687 12826.707682704473  去除bid特征
 
-score: 0.8679829003819252 13280.46852661964
 '''
