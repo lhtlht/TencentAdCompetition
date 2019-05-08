@@ -19,13 +19,13 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
     if origidBidMean >= 0.1:
         if maxshow <= minshow:
             #return round(minshow / minbid * bid, 4)
-            return round(minshow+(bid-minbid)*0.001, 4)
+            return round(minshow+(bid-minbid)*0.0001, 4)
         else:
             return round(origidBidMean,4)
     elif maxbid >= 0.1:
         if maxshow <= minshow:
             #return round(minshow / minbid * bid, 4)
-            return round(minshow + (bid - minbid) * 0.001, 4)
+            return round(minshow + (bid - minbid) * 0.0001, 4)
         else:
             slope = (maxshow - minshow) / (maxbid - minbid)
             bb = (bid - minbid)
@@ -43,9 +43,9 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
             weights.append(accountid_mean_dict[x['accountid']])
         total_mean = np.mean(weights)
         if usergroup == 'all':
-            total_mean = total_mean*1.2
+            total_mean = total_mean*1.5
         else:
-            total_mean = total_mean * 0.8
+            total_mean = total_mean * 0.7
         return round(total_mean * bid, 4)
 
 def rule_model(train, test):
@@ -118,12 +118,18 @@ if __name__ == "__main__":
 
     sub = rule_model(train, test)
     print(sub.columns)
-    sub[['id','showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
+    #sub[['id','showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
-    #model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
-    #sub = sub.merge(model_, how="left", on="id")
-    #sub['showPNum'] = sub.apply(lambda x: round(x['model_show'],4) if x['maxbid']<0.1 else x['showPNum'], axis=1)
-    #sub[['id', 'showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
+    origid_bad = sub[(sub['showPNum']<-50) | (sub['showPNum']>50)].groupby('origid').size().reset_index().rename(columns={0:'orbad'})
+    print('异常id大小',origid_bad.shape)
+    sub = sub.merge(origid_bad, how='left', on='origid')
+    sub['orbad'] = sub['orbad'].fillna(0)
+    sub[['id', 'showPNum','orbad','bid','origid']].to_csv("./data/submissionA/aa.csv", index=False)
+
+    model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
+    sub = sub.merge(model_, how="left", on="id")
+    sub['showPNum'] = sub.apply(lambda x: x['model_show'] if x['orbad']>0 else x['showPNum'], axis=1)
+    sub[['id', 'showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
 
     # rule_ = pd.read_csv("./data/submissionA/submission_rule.csv", encoding="utf-8", names=['id','rule_show'])

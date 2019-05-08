@@ -16,6 +16,7 @@ totalExposureLog_path = PATH + "totalExposureLog.out"
 totalExposureLog_path2 = PATH3 + "train.csv"
 totalExposureLog_path3 = PATH3 + "train_processing.csv"
 totalExposureLog_path4 = PATH3 + "train4.csv"
+totalExposureLog_path5 = PATH3 + "train5.csv"
 user_data_path = PATH + "user_data"
 user_data_path2 = PATH2 + "user_data.csv"
 test_sample_path = PATH + 'test_sample.dat'
@@ -87,13 +88,18 @@ def ad_operation_processing():
     ad_operation_re = ad_operation_re.merge(ad_operation_usergroup[['origid', 'usergroup']], how="left", on="origid")
     ad_operation_re = ad_operation_re.merge(ad_operation_puttime[['origid', 'putTime']], how="left", on="origid")
 
-    ad_operation_re = ad_operation_re.append(ad_operation_bid2)
+    ad_operation_re2 = ad_operation_bid2
+    ad_operation_re2 = ad_operation_re2.merge(ad_operation_usergroup2[['origid', 'usergroup','ModifyTimeDate']],how='left', on=['origid','ModifyTimeDate'])
+
+    ad_operation_re2 = ad_operation_re2.merge(ad_operation_puttime2[['origid', 'putTime','ModifyTimeDate']], how='left', on=['origid', 'ModifyTimeDate'])
+
+    ad_operation_re = ad_operation_re.append(ad_operation_re2)
     ad_operation_re = ad_operation_re.append(ad_operation_usergroup2)
     ad_operation_re = ad_operation_re.append(ad_operation_puttime2)
 
     ad_operation_re.sort_values(by=['origid', 'createModifyTime'], axis=0, inplace=True)
-    ad_operation_re.fillna(method='bfill', inplace=True)
-
+    ad_operation_re.fillna(method='ffill', inplace=True)
+    ad_operation_re = ad_operation_re.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep='first')
     ad_operation_re.to_csv(ad_operation_path2, index=False, encoding="utf-8")
     return ad_operation_re
 
@@ -139,6 +145,16 @@ def  totalExposureLog_processing():
 def count_origid_bids(bids):
     return len(list(set(list(bids))))
 def  totalExposureLog_processing2():
+    test = pd.read_csv(test_sample_path2, encoding="utf-8")
+    ad_operation = pd.read_csv(ad_operation_path2, encoding="utf-8")
+    origid_operation = ad_operation.groupby('origid').size().reset_index()
+    origids_test = test.groupby('origid').size().reset_index()
+    origids = pd.concat([origid_operation, origids_test], axis=0)
+    origids.drop_duplicates(subset=['origid'], inplace=True)
+    print(origids.shape)
+
+
+
     totalExposureLog_columns = ["requestid", "requestTime", "positionid", "userid", "origid", "size", "bid", "pctr","quality_ecpm", "totalEcpm"]
     totalExposureLog_dtypes = {"requestid": "uint32", "requestTime": "uint32", "positionid": "int32","userid": "uint32", "origid": "int32",
                                "size": "int16",  "pctr": "float32", "quality_ecpm": "float32",
@@ -146,7 +162,7 @@ def  totalExposureLog_processing2():
     totalExposureLog = pd.read_csv(totalExposureLog_path, encoding="utf-8", sep="\t",
                                    names=totalExposureLog_columns, header=None,
                                    dtype=totalExposureLog_dtypes)
-    is_exposure_feature_processing = True
+    is_exposure_feature_processing = False
     if is_exposure_feature_processing:
         origid_size = totalExposureLog[['origid','size']].groupby(['origid','size']).size().reset_index()
         origid_size_drop_duplicates = origid_size.drop_duplicates(subset=['origid'], keep='first')
@@ -163,7 +179,12 @@ def  totalExposureLog_processing2():
     #删除重复曝光
     totalExposureLog.drop_duplicates(subset=['requestid','positionid','origid'],keep='first',inplace=True)
     print("删除重复曝光",totalExposureLog.shape)
+    #缩小
+
+    totalExposureLog = origids[['origid']].merge(totalExposureLog, how='left', on='origid')
+    totalExposureLog.dropna(subset=['requestid'], inplace=True)
     totalExposureLog['requestDate'] = totalExposureLog.apply(lambda x: str(time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(x['requestTime']))).split(' ')[0], axis=1)
+    totalExposureLog.to_csv('bb.csv',index=False)
     print("格式化日期!")
     totalExposureLog = totalExposureLog[['requestDate', 'origid', 'bid']].groupby(['requestDate', 'origid']) \
         .agg(['size', 'max', 'min', 'mean', count_origid_bids]) \
@@ -218,6 +239,21 @@ def model_feature_processing(train, test):
     # test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
     # train['push_long'] = train.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
     # test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
+    #
+    # train['push_str'] = train.apply(lambda x: bin(x['push_time']).replace('0b',''), axis=1)
+    # test['push_str'] = test.apply(lambda x: bin(x['push_time']).replace('0b', ''), axis=1)
+    #
+    # train_push_hour = train.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
+    # train_push_hour = pd.DataFrame(train_push_hour)
+    # train_push_hour.columns = ['hour'+str(i) for i in range(48)]
+    # train = pd.concat([train,train_push_hour], axis=1)
+    # train[['hour'+str(i) for i in range(48)]] = train[['hour'+str(i) for i in range(48)]].astype(np.int32)
+    #
+    # test_push_hour = test.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
+    # test_push_hour = pd.DataFrame(test_push_hour)
+    # test_push_hour.columns = ['hour' + str(i) for i in range(48)]
+    # test = pd.concat([test, test_push_hour], axis=1)
+    # test[['hour' + str(i) for i in range(48)]] = test[['hour' + str(i) for i in range(48)]].astype(np.int32)
     #做曝光量的统计
 
     #针对test的处理
@@ -344,14 +380,16 @@ def rule_model(train, test):
 
     return sub
 
-def last_sta(train, test):
+def last_sta(train, test, train_yesterday):
     show_mean = train['showNum'].mean()
     train.sort_values(by=['origid','requestDate'], ascending=[True,False],inplace=True)
     train = train.drop_duplicates(subset=['origid'], keep='first')
     train['last_show'] = train['showNum']
+
+    yesterdays_mean = train[train['requestDate']==train_yesterday].mean()
     test = test.merge(train, how='left', on='origid')
     test['last_show'] = test['last_show'].fillna(show_mean)
-
+    test['last_mean_show'] = pd.Series(np.zeros(test.shape[0]))+yesterdays_mean
     return test
 
 
@@ -383,7 +421,8 @@ def train_sta(train, test):
                                                 'industryid_show_mean': 'industryid_show_mean_history',
                                                 })
         #最近统计
-        df_last = last_sta(df_train_history, df_test)
+        train_yesterday = (datetime.datetime.strptime(date, '%Y-%m-%d') - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+        df_last = last_sta(df_train_history, df_test, train_yesterday)
 
         df = pd.concat([df,
                         df_history[['meanshow_history','maxshow_history','minshow_history',
@@ -409,14 +448,15 @@ def train_sta(train, test):
                                                'industryid_show_mean':'industryid_show_mean_history',
                                                })
     #最近统计
-    test_last = last_sta(train, test)
+    train_yesterday = '2019-03-19'
+    test_last = last_sta(train, test, train_yesterday)
     test_rebuilt = pd.concat([test_window,
                               test_history[['meanshow_history', 'maxshow_history', 'minshow_history',
                                             'origid_show_mean_history', 'accountid_show_mean_history',
                                             'shopid_show_mean_history',
                                             'shoptype_show_mean_history', 'industryid_show_mean_history',
                                             ]],
-                              test_last[['last_show']]], axis=1)
+                              test_last[['last_show','last_mean_show']]], axis=1)
     return train_rebuilt, test_rebuilt
 
 
@@ -424,12 +464,12 @@ def train_sta(train, test):
 if __name__ == "__main__":
     #第一步处理
     #ad_static_feature_processing()
-    ad_operation_processing()
+    #ad_operation_processing()
     #totalExposureLog_processing()
     #user_data_processing()
     #test_sample_processing()
 
     #额外的曝光日志处理
-    #totalExposureLog_processing2()
+    totalExposureLog_processing2()
 
 

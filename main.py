@@ -33,41 +33,69 @@ def eval_model(y, y_hat, bid):
 def modify_time_date_list(ModifyTimeDates):
     return list(ModifyTimeDates)
 
-def join_puttime():
-    pass
+def join_puttime(x):
+    modify_time_date_list = x['modify_time_date_list']
+
+    ModifyTimeDate = x['ModifyTimeDate']
+    requestDate = x['requestDate']
+    if modify_time_date_list != modify_time_date_list:
+        return 2
+    right_date = modify_time_date_list[len(modify_time_date_list)-1]
+    right_status = 0
+    for i in range(len(modify_time_date_list)-1):
+        if requestDate>=modify_time_date_list[i] and requestDate<modify_time_date_list[i+1]:
+            right_date = modify_time_date_list[i]
+            break
+    if right_date == ModifyTimeDate:
+        right_status = 1
+    else:
+        right_status = 0
+
+    return right_status
 if __name__ == "__main__":
     is_offline = False
-    is_load_data = False
+    is_load_data = True
     if is_load_data:
         train, test, ad_operation, ad_static_feature, origid_size = load_data()
+        # 去除异常值
+        #train = train[(train['showNum'] < 100) & (train['bid'] < 1000)]
         #训练数据的整理
-        origid_operation = ad_operation.groupby('origid').size().reset_index()
-        origids_test = test.groupby('origid').size().reset_index()
-        origids = pd.concat([origid_operation, origids_test], axis=0)
-        train = origids[['origid']].merge(train, how='left', on='origid')
-        train.dropna(subset=['requestDate'], inplace=True) #去除某些设置，然而没有曝光的广告
+        #origid_operation = ad_operation.groupby('origid').size().reset_index()
+        test_tmp = test.copy()
+        #test_tmp = test_tmp.rename(columns={'putTime':'putTimeTest','usergroup':'usergroupTest'})
+        #origids_test = test_tmp.groupby('origid').size().reset_index()
+        #origids = pd.concat([origid_operation, origids_test], axis=0)
+        #train = origids[['origid']].merge(train, how='left', on='origid')
+        #train.dropna(subset=['requestDate'], inplace=True) #去除某些设置，然而没有曝光的广告
         train = train.merge(ad_static_feature, how="left", on=["origid"])
         train.drop(['size'], axis=1, inplace=True)
         train = train.merge(origid_size, how="left", on=["origid"])
         train.dropna(subset=['createTimeDate'], inplace=True)
 
-        ad_operation = ad_operation.merge(ad_static_feature[['origid','createTimeDate']], how='left', on=['origid'])
-        ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: x['createTimeDate'] if x['operationType']==2 else x['ModifyTimeDate'], axis=1)
-        ad_operation.drop(['createTimeDate'], axis=1, inplace=True)
-        ad_operation.drop(['createModifyTime'], axis=1, inplace=True)
-        ad_operation.drop(['modifyTag'], axis=1, inplace=True)
-        ad_operation.drop(['operationType'], axis=1, inplace=True)
-        #对投放时间、客群的拼接
-        origid_timelist = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list})
-        origid_timelist = origid_timelist.rename(columns={'ModifyTimeDate':'modify_time_date_list'})
-        ad_operation = ad_operation.merge(origid_timelist, how='left', on='origid')
-
-        train = train.merge(ad_operation, how='left', on='origid')
-        train['is_drop'] = train.apply(lambda x: join_puttime(x), axis=1)
-
-
-
-
+        # ad_operation = ad_operation.merge(ad_static_feature[['origid','createTimeDate']], how='left', on=['origid'])
+        # ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: x['createTimeDate'] if x['operationType']==2 else x['ModifyTimeDate'], axis=1)
+        # ad_operation = ad_operation.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep='first')
+        # ad_operation.drop(['createTimeDate'], axis=1, inplace=True)
+        # ad_operation.drop(['createModifyTime'], axis=1, inplace=True)
+        # ad_operation.drop(['modifyTag'], axis=1, inplace=True)
+        # ad_operation.drop(['operationType'], axis=1, inplace=True)
+        # ad_operation.drop(['bid'], axis=1, inplace=True)
+        # #对投放时间、客群的拼接
+        # origid_timelist = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list}).reset_index()
+        # origid_timelist = origid_timelist.rename(columns={'ModifyTimeDate':'modify_time_date_list'})
+        # ad_operation = ad_operation.merge(origid_timelist, how='left', on='origid')
+        # print(train.shape)
+        # train = train.merge(ad_operation, how='left', on='origid')
+        # train['is_drop'] = train.apply(lambda x: join_puttime(x), axis=1)
+        # print(train.groupby('is_drop').size())
+        # test_tmp = test_tmp.drop_duplicates(subset=['origid'])
+        # train = train.merge(test_tmp[['origid','usergroupTest','putTimeTest']], how='left', on=['origid'])
+        # train['putTime'] = train.apply(lambda x: x['putTimeTest'] if x['is_drop']==2 else x['putTime'],axis=1)
+        # train['usergroup'] = train.apply(lambda x: x['usergroupTest'] if x['is_drop'] == 2 else x['usergroup'], axis=1)
+        # train = train[train['is_drop']!=0]
+        # train.drop(['is_drop'], axis=1, inplace=True)
+        # train.drop(['modify_time_date_list'], axis=1, inplace=True)
+        print(train.shape)
         f_train = open(PATH3+'train.pkl', 'wb')
         pickle.dump(train, f_train)
         f_train.close()
@@ -79,36 +107,21 @@ if __name__ == "__main__":
         f_train = open(PATH3 + 'train.pkl', 'rb')
         train = pickle.load(f_train)
         f_train.close()
-        #去除异常值
-
-        train = train[(train['showNum']<100) & (train['bid']<1000)]
 
         f_test = open(PATH3 + 'test.pkl', 'rb')
         test = pickle.load(f_test)
         f_test.close()
-        #ad_operation.fillna(0, inplace=True)
-        #train = train.merge(ad_operation, how="left", on=["origid"])
-        #origid_mod = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list}).reset_index().rename(columns={'ModifyTimeDate':'ModifyTimeDates'}).to_dict(orient='dict')
-        #train['is_drop'] = train.apply(lambda x: 1 if x['requestDate']>=x['ModifyTimeDate'] else 0, axis=1)
-        #train = train[train['is_drop']==1]
-        #train.sort_values(by=['origid', 'createModifyTime'], axis=0, inplace=True)
-        #train.fillna(method='bfill', inplace=True)
+
     print(train.shape)
     print(train.columns)
     print(test.shape)
     print(test.columns)
 
     #特征处理
-    """
-     'maxbid', 'maxshow', 'minbid', 'minshow', 'meanshow', 'showPNum'
-     
-    """
-
-
     train.fillna(0, inplace=True)
 
     train, test = model_feature_processing(train, test)
-    train = train[train['requestDate'] >= '2019-03-01']
+    #train = train[train['requestDate'] >= '2019-03-01']
     if is_offline:
         test = train[train['requestDate'] == '2019-03-19']
         train = train[train['requestDate'] != '2019-03-19']
@@ -119,6 +132,8 @@ if __name__ == "__main__":
     #模型训练
 
     model_type = 'lgb'
+    put_hour_feature = ['hour'+str(i) for i in range(48)]
+
     label_features = ['accountid', 'shoptype', 'origid', 'industryid','shopid',
                       'createTimeDay', 'createTimeWeek', 'createTimeYear', 'createTimeMonth', 'createTimeHour']
     onehot_features = ['accountid', 'shoptype', 'origid', 'industryid','shopid',
@@ -133,7 +148,8 @@ if __name__ == "__main__":
                  'meanshow_history', 'maxshow_history', 'minshow_history',
                  'origid_show_mean_history','accountid_show_mean_history','shopid_show_mean_history',
                  'shoptype_show_mean_history','industryid_show_mean_history',
-                 'last_show'
+                 'last_show',
+                'last_mean_show'
                 ]
     #onehot_features = []
     print(train.shape)
@@ -162,6 +178,7 @@ if __name__ == "__main__":
         df['id'] = test2['id']
         df['y'] = test2['preds']
         df['y'] = df.apply(lambda x: round(x['y'],4), axis=1)
+        print(df['y'].mean())
         df.to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
 '''
@@ -173,7 +190,8 @@ score: 0.7215252196709249 23027.287463769775
 
 score: 0.7190696074609102 22391.06278183768
 score: 0.7183270629199415 21902.71653019669
-score: 0.7105138082466956 21392.573749205058
 
-score: 0.7142908658712231 21259.58862208378
+score: 0.7145889048509767 22064.342145466104
+
+31.031380857565303
 '''
