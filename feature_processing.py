@@ -235,25 +235,25 @@ def model_feature_processing(train, test):
     #train = train[train['shopid'].str.contains(',') == False]
     train['shopid'] = train['shopid'].astype(np.int32)
     #定位推送时间
-    # train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
-    # test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
-    # train['push_long'] = train.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
-    # test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] == -1 else -1, axis=1)
-    #
-    # train['push_str'] = train.apply(lambda x: bin(x['push_time']).replace('0b',''), axis=1)
-    # test['push_str'] = test.apply(lambda x: bin(x['push_time']).replace('0b', ''), axis=1)
-    #
-    # train_push_hour = train.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
-    # train_push_hour = pd.DataFrame(train_push_hour)
-    # train_push_hour.columns = ['hour'+str(i) for i in range(48)]
-    # train = pd.concat([train,train_push_hour], axis=1)
-    # train[['hour'+str(i) for i in range(48)]] = train[['hour'+str(i) for i in range(48)]].astype(np.int32)
-    #
-    # test_push_hour = test.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
-    # test_push_hour = pd.DataFrame(test_push_hour)
-    # test_push_hour.columns = ['hour' + str(i) for i in range(48)]
-    # test = pd.concat([test, test_push_hour], axis=1)
-    # test[['hour' + str(i) for i in range(48)]] = test[['hour' + str(i) for i in range(48)]].astype(np.int32)
+    train['push_time'] = train.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    train['push_long'] = train.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] != -1 else -1, axis=1)
+    test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] != -1 else -1, axis=1)
+
+    train['push_str'] = train.apply(lambda x: bin(x['push_time']).replace('0b',''), axis=1)
+    test['push_str'] = test.apply(lambda x: bin(x['push_time']).replace('0b', ''), axis=1)
+
+    train_push_hour = train.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
+    train_push_hour = pd.DataFrame(train_push_hour)
+    train_push_hour.columns = ['hour'+str(i) for i in range(48)]
+    train = pd.concat([train,train_push_hour], axis=1)
+    train[['hour'+str(i) for i in range(48)]] = train[['hour'+str(i) for i in range(48)]].astype(np.int32)
+
+    test_push_hour = test.apply(lambda x: pd.Series(list('0'.zfill(48-len(x['push_str']))+x['push_str'])) if len(x['push_str'])<48 else pd.Series(list(x['push_str'])), axis=1)
+    test_push_hour = pd.DataFrame(test_push_hour)
+    test_push_hour.columns = ['hour' + str(i) for i in range(48)]
+    test = pd.concat([test, test_push_hour], axis=1)
+    test[['hour' + str(i) for i in range(48)]] = test[['hour' + str(i) for i in range(48)]].astype(np.int32)
     #做曝光量的统计
 
     #针对test的处理
@@ -430,7 +430,7 @@ def train_sta(train, test):
                                     'shopid_show_mean_history',
                                     'shoptype_show_mean_history', 'industryid_show_mean_history',
                                     ]],
-                        df_last[['last_show']]], axis=1)
+                        df_last[['last_show','last_mean_show']]], axis=1)
         train_rebuilt = train_rebuilt.append(df)
 
     df_train = train[train['requestDate'] >= '2019-03-12']

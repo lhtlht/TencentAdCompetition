@@ -124,6 +124,10 @@ def reg_model(model_train, test, train_label, model_type, onehot_features, label
             pred = rf_model.predict(test_x)
         preds_list.append(pred)
         oof[vali_index] = k_pred
+    print(pd.DataFrame({
+        'column': features,
+        'importance': lgb_model.feature_importance(),
+    }).sort_values(by='importance'))
     preds_columns = ['preds_{id}'.format(id=i) for i in range(n_fold)]
     preds_df = pd.DataFrame(data=preds_list)
     preds_df = preds_df.T

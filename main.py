@@ -53,8 +53,8 @@ def join_puttime(x):
 
     return right_status
 if __name__ == "__main__":
-    is_offline = False
-    is_load_data = True
+    is_offline = True
+    is_load_data = False
     if is_load_data:
         train, test, ad_operation, ad_static_feature, origid_size = load_data()
         # 去除异常值
@@ -62,7 +62,7 @@ if __name__ == "__main__":
         #训练数据的整理
         #origid_operation = ad_operation.groupby('origid').size().reset_index()
         test_tmp = test.copy()
-        #test_tmp = test_tmp.rename(columns={'putTime':'putTimeTest','usergroup':'usergroupTest'})
+        test_tmp = test_tmp.rename(columns={'putTime':'putTimeTest','usergroup':'usergroupTest'})
         #origids_test = test_tmp.groupby('origid').size().reset_index()
         #origids = pd.concat([origid_operation, origids_test], axis=0)
         #train = origids[['origid']].merge(train, how='left', on='origid')
@@ -72,29 +72,29 @@ if __name__ == "__main__":
         train = train.merge(origid_size, how="left", on=["origid"])
         train.dropna(subset=['createTimeDate'], inplace=True)
 
-        # ad_operation = ad_operation.merge(ad_static_feature[['origid','createTimeDate']], how='left', on=['origid'])
-        # ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: x['createTimeDate'] if x['operationType']==2 else x['ModifyTimeDate'], axis=1)
-        # ad_operation = ad_operation.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep='first')
-        # ad_operation.drop(['createTimeDate'], axis=1, inplace=True)
-        # ad_operation.drop(['createModifyTime'], axis=1, inplace=True)
-        # ad_operation.drop(['modifyTag'], axis=1, inplace=True)
-        # ad_operation.drop(['operationType'], axis=1, inplace=True)
-        # ad_operation.drop(['bid'], axis=1, inplace=True)
-        # #对投放时间、客群的拼接
-        # origid_timelist = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list}).reset_index()
-        # origid_timelist = origid_timelist.rename(columns={'ModifyTimeDate':'modify_time_date_list'})
-        # ad_operation = ad_operation.merge(origid_timelist, how='left', on='origid')
-        # print(train.shape)
-        # train = train.merge(ad_operation, how='left', on='origid')
-        # train['is_drop'] = train.apply(lambda x: join_puttime(x), axis=1)
-        # print(train.groupby('is_drop').size())
-        # test_tmp = test_tmp.drop_duplicates(subset=['origid'])
-        # train = train.merge(test_tmp[['origid','usergroupTest','putTimeTest']], how='left', on=['origid'])
-        # train['putTime'] = train.apply(lambda x: x['putTimeTest'] if x['is_drop']==2 else x['putTime'],axis=1)
-        # train['usergroup'] = train.apply(lambda x: x['usergroupTest'] if x['is_drop'] == 2 else x['usergroup'], axis=1)
-        # train = train[train['is_drop']!=0]
-        # train.drop(['is_drop'], axis=1, inplace=True)
-        # train.drop(['modify_time_date_list'], axis=1, inplace=True)
+        ad_operation = ad_operation.merge(ad_static_feature[['origid','createTimeDate']], how='left', on=['origid'])
+        ad_operation['ModifyTimeDate'] = ad_operation.apply(lambda x: x['createTimeDate'] if x['operationType']==2 else x['ModifyTimeDate'], axis=1)
+        ad_operation = ad_operation.drop_duplicates(subset=['ModifyTimeDate', 'origid'], keep='first')
+        ad_operation.drop(['createTimeDate'], axis=1, inplace=True)
+        ad_operation.drop(['createModifyTime'], axis=1, inplace=True)
+        ad_operation.drop(['modifyTag'], axis=1, inplace=True)
+        ad_operation.drop(['operationType'], axis=1, inplace=True)
+        ad_operation.drop(['bid'], axis=1, inplace=True)
+        #对投放时间、客群的拼接
+        origid_timelist = ad_operation.groupby('origid').agg({'ModifyTimeDate':modify_time_date_list}).reset_index()
+        origid_timelist = origid_timelist.rename(columns={'ModifyTimeDate':'modify_time_date_list'})
+        ad_operation = ad_operation.merge(origid_timelist, how='left', on='origid')
+        print(train.shape)
+        train = train.merge(ad_operation, how='left', on='origid')
+        train['is_drop'] = train.apply(lambda x: join_puttime(x), axis=1)
+        print(train.groupby('is_drop').size())
+        test_tmp = test_tmp.drop_duplicates(subset=['origid'])
+        train = train.merge(test_tmp[['origid','usergroupTest','putTimeTest']], how='left', on=['origid'])
+        train['putTime'] = train.apply(lambda x: x['putTimeTest'] if x['is_drop']==2 else x['putTime'],axis=1)
+        train['usergroup'] = train.apply(lambda x: x['usergroupTest'] if x['is_drop'] == 2 else x['usergroup'], axis=1)
+        train = train[train['is_drop']!=0]
+        train.drop(['is_drop'], axis=1, inplace=True)
+        train.drop(['modify_time_date_list'], axis=1, inplace=True)
         print(train.shape)
         f_train = open(PATH3+'train.pkl', 'wb')
         pickle.dump(train, f_train)
@@ -121,7 +121,7 @@ if __name__ == "__main__":
     train.fillna(0, inplace=True)
 
     train, test = model_feature_processing(train, test)
-    #train = train[train['requestDate'] >= '2019-03-01']
+    train = train[train['requestDate'] >= '2019-03-01']
     if is_offline:
         test = train[train['requestDate'] == '2019-03-19']
         train = train[train['requestDate'] != '2019-03-19']
@@ -140,18 +140,14 @@ if __name__ == "__main__":
                       'requestDateWeek','createTimeWeek',
                        'diffdays','diffmonths']
     features = [ 'size', 'maxshow', 'minshow', 'meanshow','origidBidMean','total_diff',
-               'origid_show_mean','origid_diff',
-               'accountid_show_mean','accountid_diff',
-                 'shopid_show_mean','shopid_diff',
-                'shoptype_show_mean','shoptype_diff',
-                'industryid_show_mean','industryid_diff',
-                 'meanshow_history', 'maxshow_history', 'minshow_history',
-                 'origid_show_mean_history','accountid_show_mean_history','shopid_show_mean_history',
-                 'shoptype_show_mean_history','industryid_show_mean_history',
-                 'last_show',
-                'last_mean_show'
-                ]
-    #onehot_features = []
+                'origid_show_mean',
+
+                ] + onehot_features
+    onehot_features = []
+    train[label_features] = train[label_features].astype(int)
+    test[label_features] = test[label_features].astype(int)
+    label_features = []
+
     print(train.shape)
     print(train.info())
     print(test.info())
@@ -194,4 +190,13 @@ score: 0.7183270629199415 21902.71653019669
 score: 0.7145889048509767 22064.342145466104
 
 31.031380857565303
+30.930490758994576
+
+score: 0.7568063510699478 24020.611940457777
+score: 0.7603950244457541 23064.22292584241
+score: 0.7358247706238431 23402.50772997647
+score: 0.7097136847975927 26390.197786279223
+score: 0.6999918732066851 25515.319187750723
+score: 0.6968026069580829 25124.520068146852
+score: 0.7211974878072482 23026.883239835137
 '''

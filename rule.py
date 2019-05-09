@@ -15,6 +15,7 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
     minshow = x['minshow']
     meanshow = x['meanshow']
     usergroup = x['usergroup']
+    push_long_w = 1+(x['push_long']-35)*0.01
 
     if origidBidMean >= 0.1:
         if maxshow <= minshow:
@@ -46,7 +47,7 @@ def mean_rule(x, show_bid_mean, requestDateWeek_mean_dict, size_mean_dict,shopid
             total_mean = total_mean*1.5
         else:
             total_mean = total_mean * 0.7
-        return round(total_mean * bid, 4)
+        return round(total_mean * bid * push_long_w, 4)
 
 def rule_model(train, test):
     import datetime
@@ -114,8 +115,9 @@ if __name__ == "__main__":
     test_bid_list = test.groupby('origid').agg({'bid':redown_bids}).reset_index().rename(columns={'bid':'bid_list'})
     test = test.merge(test_bid_list, how='left', on='origid')
 
-
-
+    test['push_time'] = test.apply(lambda x: int(x['putTime'].split(',')[x['requestDateWeek']]) if x['putTime']!=0 else -1, axis=1)
+    print(test[['putTime','requestDateWeek','push_time']].head(10))
+    test['push_long'] = test.apply(lambda x: bin(x['push_time']).count('1') if x['push_time'] != -1 else -1, axis=1)
     sub = rule_model(train, test)
     print(sub.columns)
     #sub[['id','showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
@@ -129,6 +131,7 @@ if __name__ == "__main__":
     model_ = pd.read_csv("./data/submissionA/submission_model.csv", encoding="utf-8", names=['id', 'model_show'])
     sub = sub.merge(model_, how="left", on="id")
     sub['showPNum'] = sub.apply(lambda x: x['model_show'] if x['orbad']>0 else x['showPNum'], axis=1)
+    print(sub['showPNum'].mean())
     sub[['id', 'showPNum']].to_csv("./data/submissionA/submission.csv", index=False, header=None)
 
 
